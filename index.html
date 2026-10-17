@@ -692,7 +692,7 @@
 
       <div class="info-pill">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        신호 조건: 현재가 ≥ 20일 신고가 + 거래량 ≥ 평균 1.5배 · 한국투자증권 KIS API (실시간)
+        신호 조건: ① 현재가 ≥ 20일 신고가  ② 거래량 ≥ 평균 1.5배  ③ 52주 신고가 -10% 이내 · 각 34/33/33점, 100점 = 돌파 🔥
       </div>
 
       <div id="screener-list"></div>
@@ -926,9 +926,12 @@ function uid() {
 }
 function signalScore(s) {
   let score = 0;
-  const curr = Number(s.curr), high20 = Number(s.high20), vol = Number(s.vol), avgVol = Number(s.avgVol);
-  if (curr >= high20 && high20 > 0) score += 50;
-  if (vol >= avgVol * 1.5 && avgVol > 0) score += 50;
+  const curr = Number(s.curr), high20 = Number(s.high20),
+        vol = Number(s.vol), avgVol = Number(s.avgVol),
+        high52 = Number(s.high52);
+  if (curr >= high20 && high20 > 0) score += 34;           // ① 20일 신고가 돌파
+  if (vol >= avgVol * 1.5 && avgVol > 0) score += 33;      // ② 거래량 1.5배 이상
+  if (high52 > 0 && curr >= high52 * 0.9) score += 33;     // ③ 52주 신고가 대비 -10% 이내
   return score;
 }
 
@@ -948,8 +951,8 @@ function renderScreener() {
 
   list.innerHTML = screeners.map((s, i) => {
     const score = signalScore(s);
-    const isBreak = score === 100;
-    const isWatch = score === 50;
+    const isBreak = score >= 100;
+    const isWatch = score >= 34 && score < 100;
     if (isBreak) breakCnt++;
     else if (isWatch) watchCnt++;
     const badgeClass = isBreak ? 'badge-green' : isWatch ? 'badge-orange' : 'badge-blue';
@@ -966,6 +969,7 @@ function renderScreener() {
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
           <span class="badge ${badgeClass}">${badgeText}</span>
+          <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px;" onclick="toggleAtrCalc(${i})">계산</button>
           <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px;" onclick="editScreener(${i})">편집</button>
           <button class="btn btn-danger" style="padding:4px 8px;font-size:11px;" onclick="deleteScreener(${i})">삭제</button>
         </div>
@@ -987,11 +991,53 @@ function renderScreener() {
         <span class="data-value">${fmt(s.atr)}원</span>
       </div>
       <div class="data-row">
+        <span class="data-label">52주 신고가</span>
+        <span class="data-value">${s.high52 ? fmt(s.high52)+'원' : '—'} ${s.high52 && s.curr ? '<span style="font-size:11px;color:'+(s.curr>=s.high52*0.9?'var(--green)':'var(--fg3)')+'">('+(s.curr/s.high52*100).toFixed(1)+'%)</span>' : ''}</span>
+      </div>
+      <div class="data-row">
         <span class="data-label">10일 최저가</span>
         <span class="data-value orange">${s.low10 ? fmt(s.low10)+'원' : '—'}</span>
       </div>
       <div class="signal-bar">
         <div class="signal-fill" style="width:${fillW}%;background:${fillColor};"></div>
+      </div>
+      <div id="atr-calc-${i}" hidden style="margin-top:12px;padding:12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">
+        <div style="font-size:12px;font-weight:600;color:var(--fg2);margin-bottom:8px;">⚡ ATR 포지션 계산</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+          <div style="flex:1;min-width:120px;">
+            <div style="font-size:11px;color:var(--fg3);margin-bottom:3px;">계좌 총액 (원)</div>
+            <input type="text" inputmode="numeric" class="form-input" id="sc-acct-${i}" placeholder="10,000,000" style="font-size:13px;padding:6px 8px;">
+          </div>
+          <div style="flex:1;min-width:80px;">
+            <div style="font-size:11px;color:var(--fg3);margin-bottom:3px;">위험 %</div>
+            <input type="number" class="form-input" id="sc-risk-${i}" value="2" min="0.5" max="10" step="0.5" style="font-size:13px;padding:6px 8px;">
+          </div>
+          <div style="flex:1;min-width:80px;">
+            <div style="font-size:11px;color:var(--fg3);margin-bottom:3px;">ATR 배수</div>
+            <input type="number" class="form-input" id="sc-mult-${i}" value="2" min="1" max="5" step="0.5" style="font-size:13px;padding:6px 8px;">
+          </div>
+        </div>
+        <button class="btn btn-primary" style="padding:6px 14px;font-size:12px;width:100%;" onclick="calcAtrInline(${i})">계산하기</button>
+        <div id="sc-result-${i}" style="margin-top:8px;display:none;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;">
+            <div style="background:var(--surface);border-radius:6px;padding:8px;">
+              <div style="font-size:10px;color:var(--fg3);">손절가</div>
+              <div style="font-size:14px;font-weight:700;color:var(--red);font-family:'JetBrains Mono',monospace;" id="sc-r-stop-${i}">—</div>
+            </div>
+            <div style="background:var(--surface);border-radius:6px;padding:8px;">
+              <div style="font-size:10px;color:var(--fg3);">매수 수량</div>
+              <div style="font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;" id="sc-r-qty-${i}">—</div>
+            </div>
+            <div style="background:var(--surface);border-radius:6px;padding:8px;">
+              <div style="font-size:10px;color:var(--fg3);">투자 금액</div>
+              <div style="font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;" id="sc-r-invest-${i}">—</div>
+            </div>
+            <div style="background:var(--surface);border-radius:6px;padding:8px;">
+              <div style="font-size:10px;color:var(--fg3);">최대 손실</div>
+              <div style="font-size:14px;font-weight:700;color:var(--red);font-family:'JetBrains Mono',monospace;" id="sc-r-loss-${i}">—</div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -1004,6 +1050,45 @@ function updateScreenerSummary(total, brk, watch) {
   document.getElementById('sum-break').textContent = brk;
   document.getElementById('sum-watch').textContent = watch;
 }
+
+window.toggleAtrCalc = (i) => {
+  const el = document.getElementById(`atr-calc-${i}`);
+  if (!el) return;
+  el.hidden = !el.hidden;
+};
+
+window.calcAtrInline = (i) => {
+  const s = screeners[i];
+  if (!s) return;
+  const acctRaw = (document.getElementById(`sc-acct-${i}`)?.value || '').replace(/,/g,'');
+  const acct = +acctRaw || 0;
+  const risk = +(document.getElementById(`sc-risk-${i}`)?.value) || 2;
+  const mult = +(document.getElementById(`sc-mult-${i}`)?.value) || 2;
+  const curr = s.curr || 0;
+  const atr  = s.atr  || 0;
+  if (!curr || !atr) {
+    alert('현재가와 ATR 값이 필요합니다. 먼저 데이터를 조회하세요.');
+    return;
+  }
+  const stoploss     = curr - atr * mult;
+  const riskPerShare = curr - stoploss;            // = atr * mult
+  const allowedLoss  = acct * (risk / 100);
+  const qty          = acct > 0 ? Math.floor(allowedLoss / riskPerShare) : 0;
+  const invest       = qty * curr;
+  const maxLoss      = qty * riskPerShare;
+
+  const stopEl = document.getElementById(`sc-r-stop-${i}`);
+  const qtyEl  = document.getElementById(`sc-r-qty-${i}`);
+  const invEl  = document.getElementById(`sc-r-invest-${i}`);
+  const lossEl = document.getElementById(`sc-r-loss-${i}`);
+  const resEl  = document.getElementById(`sc-result-${i}`);
+
+  if (stopEl) stopEl.textContent = fmt(stoploss) + '원';
+  if (qtyEl)  qtyEl.textContent  = qty > 0 ? qty + '주' : '계좌 입력 필요';
+  if (invEl)  invEl.textContent  = invest > 0 ? fmt(invest) + '원' : '—';
+  if (lossEl) lossEl.textContent = maxLoss > 0 ? '-' + fmt(maxLoss) + '원' : '—';
+  if (resEl)  resEl.style.display = 'block';
+};
 
 // ─── KIS Worker API ────────────────────────────────────────
 // Cloudflare Workers 프록시를 통해 KIS Open API 호출
@@ -1043,8 +1128,7 @@ async function fetchKisData(ticker) {
   const d = await res.json();
   if (d.error) throw new Error(d.error);
 
-  // Worker가 반환하는 필드: code, curr, high20, low10, avgVol, todayVol, atr, rows
-  // name은 /price 엔드포인트에서 가져옴
+  // Worker가 반환하는 필드: code, curr, high20, low10, avgVol, todayVol, atr, high52, rows
   return {
     symbol: code,
     name: d.name || '',
@@ -1054,6 +1138,7 @@ async function fetchKisData(ticker) {
     todayVol: d.todayVol,
     avgVol: d.avgVol,
     atr: d.atr,
+    high52: d.high52 || 0,
   };
 }
 
@@ -1111,8 +1196,12 @@ function screenerFormHtml(s = {}) {
       <div class="form-group"><label class="form-label">ATR 14일 (원)</label>
         <input type="text" inputmode="numeric" class="form-input" id="f-atr" placeholder="자동 입력" value="${s.atr ? s.atr.toLocaleString('ko-KR') : ''}"></div>
     </div>
-    <div class="form-group"><label class="form-label">10일 최저가 (원)</label>
-      <input type="text" inputmode="numeric" class="form-input" id="f-low10" placeholder="자동 입력" value="${s.low10 ? s.low10.toLocaleString('ko-KR') : ''}"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">10일 최저가 (원)</label>
+        <input type="text" inputmode="numeric" class="form-input" id="f-low10" placeholder="자동 입력" value="${s.low10 ? s.low10.toLocaleString('ko-KR') : ''}"></div>
+      <div class="form-group"><label class="form-label">52주 신고가 (원)</label>
+        <input type="text" inputmode="numeric" class="form-input" id="f-high52" placeholder="자동 입력" value="${s.high52 ? s.high52.toLocaleString('ko-KR') : ''}"></div>
+    </div>
     <button class="btn btn-primary" id="f-submit">저장</button>
   `;
 }
@@ -1133,6 +1222,7 @@ async function applyKisData(code, nameHint) {
     document.getElementById('f-avgvol').value = fmt(d.avgVol);
     document.getElementById('f-atr').value = fmt(d.atr);
     document.getElementById('f-low10').value = fmt(d.low10);
+    if (document.getElementById('f-high52')) document.getElementById('f-high52').value = fmt(d.high52);
     status.className = 'fetch-status success';
     status.innerHTML = '✓ 데이터 자동 입력 완료 (한국투자증권 실시간)';
   } catch(e) {
@@ -1224,6 +1314,7 @@ function collectScreenerForm(existing = {}) {
     avgVol: +(document.getElementById('f-avgvol').value.replace(/,/g,'')),
     atr: +(document.getElementById('f-atr').value.replace(/,/g,'')),
     low10: +(document.getElementById('f-low10').value.replace(/,/g,'')),
+    high52: +(document.getElementById('f-high52')?.value.replace(/,/g,'') || 0),
   };
 }
 
@@ -1268,6 +1359,7 @@ document.getElementById('btn-refresh-all').addEventListener('click', async () =>
         curr: d.curr, high20: d.high20,
         vol: d.todayVol, avgVol: d.avgVol,
         atr: d.atr, low10: d.low10,
+        high52: d.high52 || screeners[i].high52 || 0,
       };
       ok++;
     } catch { fail++; }
