@@ -1097,22 +1097,22 @@ function screenerFormHtml(s = {}) {
       <div class="form-group"><label class="form-label">종목명</label>
         <input class="form-input" id="f-name" placeholder="자동 입력" value="${s.name||''}"></div>
       <div class="form-group"><label class="form-label">현재가 (원)</label>
-        <input type="number" class="form-input" id="f-curr" placeholder="자동 입력" value="${s.curr||''}"></div>
+        <input type="text" inputmode="numeric" class="form-input" id="f-curr" placeholder="자동 입력" value="${s.curr ? s.curr.toLocaleString('ko-KR') : ''}"></div>
     </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">20일 신고가 (원)</label>
-        <input type="number" class="form-input" id="f-high20" placeholder="자동 입력" value="${s.high20||''}"></div>
+        <input type="text" inputmode="numeric" class="form-input" id="f-high20" placeholder="자동 입력" value="${s.high20 ? s.high20.toLocaleString('ko-KR') : ''}"></div>
       <div class="form-group"><label class="form-label">오늘 거래량</label>
-        <input type="number" class="form-input" id="f-vol" placeholder="자동 입력" value="${s.vol||''}"></div>
+        <input type="text" inputmode="numeric" class="form-input" id="f-vol" placeholder="자동 입력" value="${s.vol ? s.vol.toLocaleString('ko-KR') : ''}"></div>
     </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">20일 평균 거래량</label>
-        <input type="number" class="form-input" id="f-avgvol" placeholder="자동 입력" value="${s.avgVol||''}"></div>
+        <input type="text" inputmode="numeric" class="form-input" id="f-avgvol" placeholder="자동 입력" value="${s.avgVol ? s.avgVol.toLocaleString('ko-KR') : ''}"></div>
       <div class="form-group"><label class="form-label">ATR 14일 (원)</label>
-        <input type="number" class="form-input" id="f-atr" placeholder="자동 입력" value="${s.atr||''}"></div>
+        <input type="text" inputmode="numeric" class="form-input" id="f-atr" placeholder="자동 입력" value="${s.atr ? s.atr.toLocaleString('ko-KR') : ''}"></div>
     </div>
     <div class="form-group"><label class="form-label">10일 최저가 (원)</label>
-      <input type="number" class="form-input" id="f-low10" placeholder="자동 입력" value="${s.low10||''}"></div>
+      <input type="text" inputmode="numeric" class="form-input" id="f-low10" placeholder="자동 입력" value="${s.low10 ? s.low10.toLocaleString('ko-KR') : ''}"></div>
     <button class="btn btn-primary" id="f-submit">저장</button>
   `;
 }
@@ -1218,12 +1218,12 @@ function collectScreenerForm(existing = {}) {
     id: existing.id || uid(),
     ticker: document.getElementById('f-ticker').value.toUpperCase(),
     name: document.getElementById('f-name').value,
-    curr: +document.getElementById('f-curr').value,
-    high20: +document.getElementById('f-high20').value,
-    vol: +document.getElementById('f-vol').value,
-    avgVol: +document.getElementById('f-avgvol').value,
-    atr: +document.getElementById('f-atr').value,
-    low10: +document.getElementById('f-low10').value,
+    curr: +(document.getElementById('f-curr').value.replace(/,/g,'')),
+    high20: +(document.getElementById('f-high20').value.replace(/,/g,'')),
+    vol: +(document.getElementById('f-vol').value.replace(/,/g,'')),
+    avgVol: +(document.getElementById('f-avgvol').value.replace(/,/g,'')),
+    atr: +(document.getElementById('f-atr').value.replace(/,/g,'')),
+    low10: +(document.getElementById('f-low10').value.replace(/,/g,'')),
   };
 }
 
