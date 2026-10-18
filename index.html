@@ -674,8 +674,21 @@
         </div>
       </div>
 
+      <!-- 자동선별 즐겨찾기 섹션 -->
+      <div id="fav-section" style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <span style="font-size:14px;font-weight:700;">★ 자동선별 즐겨찾기</span>
+          <span id="fav-count" style="font-size:12px;color:var(--fg3);"></span>
+        </div>
+        <div id="fav-list">
+          <p style="font-size:13px;color:var(--fg3);padding:10px 0;">자동선별 탭에서 ★ 아이콘을 눌러 즐겨찾기를 추가하세요</p>
+        </div>
+      </div>
+
+      <div style="border-top:1px solid var(--border);margin-bottom:16px;"></div>
+
       <div class="section-head">
-        <h2>종목 스크리너</h2>
+        <h2>수동 스크리너</h2>
         <button class="btn btn-ghost" id="btn-add-screener" style="padding:6px 10px;font-size:12px;">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           종목 추가
@@ -920,6 +933,104 @@
   </div>
 </div>
 
+<!-- ══ 주문 모달 ══════════════════════════════════════════════ -->
+<div id="order-modal-overlay" hidden style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:200;display:flex;align-items:flex-end;justify-content:center;">
+  <div style="background:var(--surface);border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:24px 20px 36px;box-shadow:0 -4px 32px rgba(0,0,0,0.18);">
+    <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px;"></div>
+
+    <!-- 종목 정보 헤더 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <div>
+        <div id="om-name" style="font-size:18px;font-weight:800;"></div>
+        <div id="om-code" style="font-size:13px;color:var(--fg3);margin-top:2px;"></div>
+      </div>
+      <div style="text-align:right;">
+        <div id="om-price" style="font-size:20px;font-weight:800;color:#2563eb;"></div>
+        <div style="font-size:11px;color:var(--fg3);">현재가 (시장가 기준)</div>
+      </div>
+    </div>
+
+    <!-- 매수/매도 탭 -->
+    <div style="display:flex;gap:6px;margin-bottom:18px;">
+      <button id="om-tab-buy" onclick="setOrderSide('buy')"
+        style="flex:1;padding:10px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer;background:#2563eb;color:#fff;">
+        📈 매수
+      </button>
+      <button id="om-tab-sell" onclick="setOrderSide('sell')"
+        style="flex:1;padding:10px;border-radius:10px;border:2px solid var(--border);font-size:14px;font-weight:700;cursor:pointer;background:var(--surface1);color:var(--fg);">
+        📉 매도
+      </button>
+    </div>
+
+    <!-- 주문 종류 -->
+    <div style="margin-bottom:14px;">
+      <div style="font-size:12px;font-weight:600;color:var(--fg3);margin-bottom:6px;">주문 종류</div>
+      <div style="display:flex;gap:6px;">
+        <button id="om-type-market" onclick="setOrderType('market')"
+          style="flex:1;padding:8px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;background:#2563eb;color:#fff;">
+          시장가
+        </button>
+        <button id="om-type-limit" onclick="setOrderType('limit')"
+          style="flex:1;padding:8px;border-radius:8px;border:2px solid var(--border);font-size:13px;font-weight:600;cursor:pointer;background:var(--surface1);color:var(--fg);">
+          지정가
+        </button>
+      </div>
+    </div>
+
+    <!-- 지정가 입력 (숨김) -->
+    <div id="om-limit-row" hidden style="margin-bottom:14px;">
+      <div style="font-size:12px;font-weight:600;color:var(--fg3);margin-bottom:6px;">지정가 (원)</div>
+      <input id="om-limit-price" type="number" inputmode="numeric" placeholder="희망 가격 입력"
+        style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px 12px;font-size:15px;background:var(--surface1);color:var(--fg);box-sizing:border-box;">
+    </div>
+
+    <!-- 수량/금액 전환 -->
+    <div style="margin-bottom:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <div style="font-size:12px;font-weight:600;color:var(--fg3);">수량/금액</div>
+        <div style="display:flex;gap:4px;">
+          <button id="om-input-qty" onclick="setInputMode('qty')"
+            style="padding:4px 10px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;background:#2563eb;color:#fff;">수량</button>
+          <button id="om-input-amt" onclick="setInputMode('amt')"
+            style="padding:4px 10px;border-radius:6px;border:2px solid var(--border);font-size:12px;font-weight:600;cursor:pointer;background:var(--surface1);color:var(--fg);">금액</button>
+        </div>
+      </div>
+      <div style="position:relative;">
+        <input id="om-qty-input" type="number" inputmode="numeric" min="1" placeholder="주문 수량"
+          style="width:100%;border:1.5px solid var(--border);border-radius:8px;padding:10px 50px 10px 12px;font-size:15px;background:var(--surface1);color:var(--fg);box-sizing:border-box;"
+          oninput="updateOrderCalc()">
+        <span id="om-qty-unit" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--fg3);pointer-events:none;">주</span>
+      </div>
+    </div>
+
+    <!-- 계산 결과 -->
+    <div id="om-calc" style="background:var(--surface1);border-radius:10px;padding:12px 14px;margin-bottom:18px;display:flex;justify-content:space-between;">
+      <div style="text-align:center;">
+        <div style="font-size:11px;color:var(--fg3);">주문 수량</div>
+        <div id="om-calc-qty" style="font-size:15px;font-weight:700;">—</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:11px;color:var(--fg3);">예상 금액</div>
+        <div id="om-calc-amt" style="font-size:15px;font-weight:700;color:#2563eb;">—</div>
+      </div>
+    </div>
+
+    <!-- 버튼 -->
+    <div style="display:flex;gap:10px;">
+      <button onclick="closeOrderModal()"
+        style="flex:1;padding:14px;border-radius:12px;border:2px solid var(--border);font-size:15px;font-weight:700;cursor:pointer;background:var(--surface1);color:var(--fg);">
+        취소
+      </button>
+      <button id="om-submit-btn" onclick="submitOrder()"
+        style="flex:2;padding:14px;border-radius:12px;border:none;font-size:15px;font-weight:700;cursor:pointer;background:#2563eb;color:#fff;">
+        📈 매수 주문
+      </button>
+    </div>
+
+    <div id="om-status" style="margin-top:12px;text-align:center;font-size:13px;min-height:20px;"></div>
+  </div>
+</div>
+
 <script>
 // ─── Storage ─────────────────────────────────────────────────
 const KEYS = { screener: 'tf_screener', positions: 'tf_positions', journal: 'tf_journal', acct: 'tf_account' };
@@ -1023,8 +1134,9 @@ function renderScreener() {
           <span class="card-title">${s.ticker}</span>
           <span style="font-size:12px;color:var(--fg3);margin-left:6px;">${s.name || ''}</span>
         </div>
-        <div style="display:flex;align-items:center;gap:6px;">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
           <span class="badge ${badgeClass}">${badgeText}</span>
+          <button style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;" onclick="openOrderModal('${s.ticker}','${s.name||s.ticker}',${s.curr||0},'buy')">📈 매수</button>
           <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px;" onclick="toggleAtrCalc(${i})">계산</button>
           <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px;" onclick="editScreener(${i})">편집</button>
           <button class="btn btn-danger" style="padding:4px 8px;font-size:11px;" onclick="deleteScreener(${i})">삭제</button>
@@ -1834,6 +1946,7 @@ async function loadScanResult() {
     list.innerHTML = data.results.map((r, i) => {
       const scoreColor = r.score >= 100 ? '#22c55e' : r.score >= 67 ? '#f59e0b' : '#94a3b8';
       const reasonTags = r.reasons.map(t => `<span style="background:var(--surface2);border-radius:4px;padding:2px 6px;font-size:11px;">${t}</span>`).join(' ');
+      const isFav = getFavorites().some(f => f.code === r.code);
       return `
       <div style="background:var(--surface1);border-radius:12px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:12px;">
         <div style="font-size:13px;font-weight:700;color:var(--fg-muted);width:24px;text-align:center;">${i+1}</div>
@@ -1841,12 +1954,21 @@ async function loadScanResult() {
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
             <span style="font-weight:700;font-size:15px;">${r.name}</span>
             <span style="font-size:12px;color:var(--fg-muted);">${r.code}</span>
+            <button onclick="toggleFavorite('${r.code}','${r.name}',${r.curr||0},this)"
+              style="background:none;border:none;cursor:pointer;font-size:16px;padding:0;line-height:1;"
+              title="${isFav?'즐겨찾기 해제':'즐겨찾기 추가'}">${isFav?'★':'☆'}</button>
           </div>
           <div style="display:flex;gap:4px;flex-wrap:wrap;">${reasonTags}</div>
         </div>
-        <div style="text-align:right;flex-shrink:0;">
-          <div style="font-size:18px;font-weight:800;color:${scoreColor};">${r.score}점</div>
-          <div style="font-size:12px;color:var(--fg-muted);">${r.curr ? r.curr.toLocaleString()+'원' : ''}</div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
+          <div style="text-align:right;">
+            <div style="font-size:18px;font-weight:800;color:${scoreColor};">${r.score}점</div>
+            <div style="font-size:12px;color:var(--fg-muted);">${r.curr ? r.curr.toLocaleString()+'원' : ''}</div>
+          </div>
+          <button onclick="openOrderModal('${r.code}','${r.name}',${r.curr||0},'buy')"
+            style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">
+            📈 매수
+          </button>
         </div>
       </div>`;
     }).join('');
@@ -1934,11 +2056,230 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
       loadScanResult();
       loadKakaoStatus();
     }
+    if (btn.dataset.tab === 'screener') {
+      renderFavorites();
+    }
   });
 });
+
+// ─── 즐겨찾기 (자동선별 → 스크리너 탭) ──────────────────────
+const FAV_KEY = 'tf_favorites';
+
+function getFavorites() {
+  try { return JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); } catch { return []; }
+}
+function saveFavorites(favs) {
+  try { localStorage.setItem(FAV_KEY, JSON.stringify(favs)); } catch {}
+}
+
+window.toggleFavorite = function(code, name, curr, btnEl) {
+  let favs = getFavorites();
+  const idx = favs.findIndex(f => f.code === code);
+  if (idx >= 0) {
+    favs.splice(idx, 1);
+    if (btnEl) { btnEl.textContent = '☆'; btnEl.title = '즐겨찾기 추가'; }
+  } else {
+    favs.push({ code, name, curr, addedAt: new Date().toISOString() });
+    if (btnEl) { btnEl.textContent = '★'; btnEl.title = '즐겨찾기 해제'; }
+  }
+  saveFavorites(favs);
+  renderFavorites();
+};
+
+function renderFavorites() {
+  const favs = getFavorites();
+  const list = document.getElementById('fav-list');
+  const count = document.getElementById('fav-count');
+  if (!list) return;
+
+  count.textContent = favs.length ? `${favs.length}개` : '';
+
+  if (!favs.length) {
+    list.innerHTML = '<p style="font-size:13px;color:var(--fg3);padding:10px 0;">자동선별 탭에서 ★ 아이콘을 눌러 즐겨찾기를 추가하세요</p>';
+    return;
+  }
+
+  list.innerHTML = favs.map(f => `
+    <div style="background:var(--surface1);border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;">
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-weight:700;font-size:14px;">${f.name}</span>
+          <span style="font-size:12px;color:var(--fg3);">${f.code}</span>
+        </div>
+        <div style="font-size:12px;color:var(--fg3);margin-top:2px;">${f.curr ? f.curr.toLocaleString()+'원' : '—'}</div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button onclick="openOrderModal('${f.code}','${f.name}',${f.curr||0},'buy')"
+          style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">
+          📈 매수
+        </button>
+        <button onclick="removeFavorite('${f.code}')"
+          style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--fg3);padding:2px;">★</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+window.removeFavorite = function(code) {
+  let favs = getFavorites().filter(f => f.code !== code);
+  saveFavorites(favs);
+  renderFavorites();
+};
+
+// ─── 주문 모달 ───────────────────────────────────────────────
+let _orderState = { code: '', name: '', price: 0, side: 'buy', orderType: 'market', inputMode: 'qty' };
+
+window.openOrderModal = function(code, name, curr, side = 'buy') {
+  _orderState = { code, name, price: curr, side, orderType: 'market', inputMode: 'qty' };
+  document.getElementById('om-name').textContent = name;
+  document.getElementById('om-code').textContent = code;
+  document.getElementById('om-price').textContent = curr ? curr.toLocaleString() + '원' : '—';
+  document.getElementById('om-qty-input').value = '';
+  document.getElementById('om-limit-price').value = curr || '';
+  document.getElementById('om-status').textContent = '';
+  setOrderSide(side);
+  setOrderType('market');
+  setInputMode('qty');
+  updateOrderCalc();
+  document.getElementById('order-modal-overlay').hidden = false;
+};
+
+window.closeOrderModal = function() {
+  document.getElementById('order-modal-overlay').hidden = true;
+};
+
+window.setOrderSide = function(side) {
+  _orderState.side = side;
+  const isBuy = side === 'buy';
+  document.getElementById('om-tab-buy').style.cssText = isBuy
+    ? 'flex:1;padding:10px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer;background:#2563eb;color:#fff;'
+    : 'flex:1;padding:10px;border-radius:10px;border:2px solid var(--border);font-size:14px;font-weight:700;cursor:pointer;background:var(--surface1);color:var(--fg);';
+  document.getElementById('om-tab-sell').style.cssText = !isBuy
+    ? 'flex:1;padding:10px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer;background:#ef4444;color:#fff;'
+    : 'flex:1;padding:10px;border-radius:10px;border:2px solid var(--border);font-size:14px;font-weight:700;cursor:pointer;background:var(--surface1);color:var(--fg);';
+  const btn = document.getElementById('om-submit-btn');
+  btn.textContent = isBuy ? '📈 매수 주문' : '📉 매도 주문';
+  btn.style.background = isBuy ? '#2563eb' : '#ef4444';
+};
+
+window.setOrderType = function(type) {
+  _orderState.orderType = type;
+  const isMarket = type === 'market';
+  document.getElementById('om-type-market').style.cssText = isMarket
+    ? 'flex:1;padding:8px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;background:#2563eb;color:#fff;'
+    : 'flex:1;padding:8px;border-radius:8px;border:2px solid var(--border);font-size:13px;font-weight:600;cursor:pointer;background:var(--surface1);color:var(--fg);';
+  document.getElementById('om-type-limit').style.cssText = !isMarket
+    ? 'flex:1;padding:8px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;background:#2563eb;color:#fff;'
+    : 'flex:1;padding:8px;border-radius:8px;border:2px solid var(--border);font-size:13px;font-weight:600;cursor:pointer;background:var(--surface1);color:var(--fg);';
+  document.getElementById('om-limit-row').hidden = isMarket;
+};
+
+window.setInputMode = function(mode) {
+  _orderState.inputMode = mode;
+  const isQty = mode === 'qty';
+  document.getElementById('om-input-qty').style.cssText = isQty
+    ? 'padding:4px 10px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;background:#2563eb;color:#fff;'
+    : 'padding:4px 10px;border-radius:6px;border:2px solid var(--border);font-size:12px;font-weight:600;cursor:pointer;background:var(--surface1);color:var(--fg);';
+  document.getElementById('om-input-amt').style.cssText = !isQty
+    ? 'padding:4px 10px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;background:#2563eb;color:#fff;'
+    : 'padding:4px 10px;border-radius:6px;border:2px solid var(--border);font-size:12px;font-weight:600;cursor:pointer;background:var(--surface1);color:var(--fg);';
+  document.getElementById('om-qty-unit').textContent = isQty ? '주' : '원';
+  document.getElementById('om-qty-input').placeholder = isQty ? '주문 수량' : '투자 금액 (원)';
+  updateOrderCalc();
+};
+
+window.updateOrderCalc = function() {
+  const val = parseFloat(document.getElementById('om-qty-input').value) || 0;
+  const limitPrice = parseFloat(document.getElementById('om-limit-price').value) || 0;
+  const refPrice = _orderState.orderType === 'limit' && limitPrice > 0 ? limitPrice : _orderState.price;
+
+  let qty = 0, amt = 0;
+  if (_orderState.inputMode === 'qty') {
+    qty = Math.floor(val);
+    amt = qty * refPrice;
+  } else {
+    qty = refPrice > 0 ? Math.floor(val / refPrice) : 0;
+    amt = qty * refPrice;
+  }
+
+  document.getElementById('om-calc-qty').textContent = qty > 0 ? `${qty}주` : '—';
+  document.getElementById('om-calc-amt').textContent = amt > 0 ? `${amt.toLocaleString()}원` : '—';
+};
+
+window.submitOrder = async function() {
+  const val = parseFloat(document.getElementById('om-qty-input').value) || 0;
+  const limitPrice = parseFloat(document.getElementById('om-limit-price').value) || 0;
+  const refPrice = _orderState.orderType === 'limit' && limitPrice > 0 ? limitPrice : _orderState.price;
+
+  let qty = 0;
+  if (_orderState.inputMode === 'qty') {
+    qty = Math.floor(val);
+  } else {
+    qty = refPrice > 0 ? Math.floor(val / refPrice) : 0;
+  }
+
+  if (qty < 1) {
+    document.getElementById('om-status').textContent = '❌ 수량을 입력해주세요';
+    document.getElementById('om-status').style.color = '#ef4444';
+    return;
+  }
+  if (_orderState.orderType === 'limit' && (!limitPrice || limitPrice < 1)) {
+    document.getElementById('om-status').textContent = '❌ 지정가를 입력해주세요';
+    document.getElementById('om-status').style.color = '#ef4444';
+    return;
+  }
+
+  const sideText = _orderState.side === 'buy' ? '매수' : '매도';
+  const typeText = _orderState.orderType === 'market' ? '시장가' : `지정가 ${limitPrice.toLocaleString()}원`;
+  const confirmed = confirm(`[모의투자] ${_orderState.name} ${sideText}\n${typeText} · ${qty}주 주문하시겠어요?`);
+  if (!confirmed) return;
+
+  const btn = document.getElementById('om-submit-btn');
+  const status = document.getElementById('om-status');
+  btn.disabled = true;
+  btn.textContent = '주문 중...';
+  status.textContent = '';
+
+  try {
+    const res = await fetch(`${KIS_WORKER}/order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: _orderState.code,
+        side: _orderState.side,
+        orderType: _orderState.orderType,
+        qty,
+        price: limitPrice,
+      }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      status.style.color = '#22c55e';
+      status.textContent = `✅ ${sideText} 완료! 주문번호: ${data.ordNo || '—'}`;
+      setTimeout(closeOrderModal, 2000);
+    } else {
+      throw new Error(data.error || '주문 실패');
+    }
+  } catch(e) {
+    status.style.color = '#ef4444';
+    status.textContent = '❌ ' + e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = _orderState.side === 'buy' ? '📈 매수 주문' : '📉 매도 주문';
+  }
+};
+
+// 모달 배경 클릭 시 닫기
+document.getElementById('order-modal-overlay').addEventListener('click', function(e) {
+  if (e.target === this) closeOrderModal();
+});
+
+// 지정가 변경 시 계산 업데이트
+document.getElementById('om-limit-price').addEventListener('input', updateOrderCalc);
 
 // ─── Init ────────────────────────────────────────────────────
 renderScreener();
 renderPositions();
 renderJournal();
+renderFavorites();
 </script>
