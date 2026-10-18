@@ -857,6 +857,34 @@
         기본: 20일 신고가 돌파 + 거래량 1.5배
       </div>
       <div id="scan-meta" style="font-size:12px;color:var(--fg-muted);margin-bottom:12px;"></div>
+
+      <!-- 카카오 알림 설정 카드 -->
+      <div style="background:var(--surface1);border-radius:12px;padding:14px 16px;margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <span style="font-size:14px;font-weight:700;">🔔 카카오톡 자동 알림</span>
+          <!-- ON/OFF 토글 -->
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <span id="notify-label" style="font-size:12px;color:var(--fg-muted);">OFF</span>
+            <div onclick="toggleNotify()" id="notify-toggle"
+              style="width:44px;height:24px;border-radius:12px;background:#ccc;position:relative;cursor:pointer;transition:background 0.2s;">
+              <div id="notify-thumb"
+                style="width:20px;height:20px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>
+            </div>
+          </label>
+        </div>
+        <div style="font-size:12px;color:var(--fg-muted);margin-bottom:10px;">
+          매일 평일 오후 4시 스캔 완료 후 자동 전송됩니다.
+        </div>
+        <!-- 토큰 입력 -->
+        <div style="display:flex;gap:6px;align-items:center;">
+          <input type="password" id="kakao-access-token" placeholder="카카오 액세스 토큰"
+            style="flex:1;border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;background:var(--bg);color:var(--fg);outline:none;min-width:0;">
+          <button onclick="saveKakaoToken()"
+            style="background:#FEE500;border:none;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;color:#000;white-space:nowrap;">저장</button>
+        </div>
+        <div id="kakao-setting-status" style="font-size:11px;margin-top:6px;color:var(--fg-muted);min-height:16px;"></div>
+      </div>
+
       <div id="scan-list"></div>
     </div>
 
@@ -1827,10 +1855,85 @@ async function loadScanResult() {
   }
 }
 
+// ─── 카카오 알림 설정 ────────────────────────────────────────
+async function loadKakaoStatus() {
+  try {
+    const res = await fetch(`${KIS_WORKER}/kakao-setting`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'get-status' })
+    });
+    const data = await res.json();
+    setNotifyToggleUI(data.enabled);
+    if (data.hasToken) {
+      document.getElementById('kakao-access-token').placeholder = '토큰 저장됨 (변경 시 입력)';
+      document.getElementById('kakao-setting-status').textContent = '✅ 토큰 저장되어 있음';
+    }
+  } catch(e) { /* 무시 */ }
+}
+
+function setNotifyToggleUI(on) {
+  const toggle = document.getElementById('notify-toggle');
+  const thumb  = document.getElementById('notify-thumb');
+  const label  = document.getElementById('notify-label');
+  toggle.style.background = on ? '#FEE500' : '#ccc';
+  thumb.style.left = on ? '22px' : '2px';
+  label.textContent = on ? 'ON' : 'OFF';
+  label.style.color = on ? '#000' : 'var(--fg-muted)';
+}
+
+async function toggleNotify() {
+  const label = document.getElementById('notify-label');
+  const currentlyOn = label.textContent === 'ON';
+  const newVal = !currentlyOn;
+  setNotifyToggleUI(newVal);
+  try {
+    await fetch(`${KIS_WORKER}/kakao-setting`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'set-notify', enabled: newVal })
+    });
+    document.getElementById('kakao-setting-status').textContent =
+      newVal ? '✅ 자동 알림 ON — 매일 오후 4시에 카카오톡으로 전송됩니다.' : '🔕 자동 알림 OFF';
+  } catch(e) {
+    document.getElementById('kakao-setting-status').textContent = '오류: ' + e.message;
+  }
+}
+
+async function saveKakaoToken() {
+  const token = document.getElementById('kakao-access-token').value.trim();
+  if (!token) {
+    document.getElementById('kakao-setting-status').textContent = '❗ 토큰을 입력해주세요.';
+    return;
+  }
+  const status = document.getElementById('kakao-setting-status');
+  status.textContent = '저장 중...';
+  try {
+    const res = await fetch(`${KIS_WORKER}/kakao-setting`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'save-token', token })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      status.textContent = '✅ 토큰 저장 완료!';
+      document.getElementById('kakao-access-token').value = '';
+      document.getElementById('kakao-access-token').placeholder = '토큰 저장됨 (변경 시 입력)';
+    } else {
+      status.textContent = '❌ 오류: ' + (data.error || '저장 실패');
+    }
+  } catch(e) {
+    status.textContent = '❌ ' + e.message;
+  }
+}
+
 // 자동선별 탭 클릭 시 자동 로드
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    if (btn.dataset.tab === 'auto') loadScanResult();
+    if (btn.dataset.tab === 'auto') {
+      loadScanResult();
+      loadKakaoStatus();
+    }
   });
 });
 
