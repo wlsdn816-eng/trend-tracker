@@ -1789,7 +1789,7 @@ async function loadScanResult() {
   meta.textContent = '불러오는 중...';
   list.innerHTML = '';
   try {
-    const res = await fetch(`${WORKER}/scan-result?mode=${scanMode}`);
+    const res = await fetch(`${KIS_WORKER}/scan-result?mode=${scanMode}`);
     const data = await res.json();
     if (data.error) {
       meta.textContent = '스캔 결과 없음. 평일 장 마감 후 자동 갱신됩니다.';
