@@ -2322,7 +2322,7 @@ async function loadScanResult() {
           <div>
             <span class="card-title">${r.name}</span>
             <span style="font-size:12px;color:var(--fg3);margin-left:6px;">${r.code}</span>
-            <button onclick="toggleFavorite('${r.code}','${r.name}',${r.curr||0},this)"
+            <button onclick="toggleFavorite('${r.code}','${r.name}',${r.curr||0},this,{score:${r.score||0},high20:${r.high20||0},high52:${r.high52||0},avgVol:${r.avgVol||0},todayVol:${r.todayVol||0},atr:${r.atr||0}})"
               style="background:none;border:none;cursor:pointer;font-size:16px;padding:0 4px;line-height:1;vertical-align:middle;"
               title="${isFav?'즐겨찾기 해제':'즐겨찾기 추가'}">${isFav?'★':'☆'}</button>
           </div>
@@ -2463,14 +2463,14 @@ function saveFavorites(favs) {
   try { localStorage.setItem(FAV_KEY, JSON.stringify(favs)); } catch {}
 }
 
-window.toggleFavorite = function(code, name, curr, btnEl) {
+window.toggleFavorite = function(code, name, curr, btnEl, extra) {
   let favs = getFavorites();
   const idx = favs.findIndex(f => f.code === code);
   if (idx >= 0) {
     favs.splice(idx, 1);
     if (btnEl) { btnEl.textContent = '☆'; btnEl.title = '즐겨찾기 추가'; }
   } else {
-    favs.push({ code, name, curr, addedAt: new Date().toISOString() });
+    favs.push({ code, name, curr, addedAt: new Date().toISOString(), ...(extra || {}) });
     if (btnEl) { btnEl.textContent = '★'; btnEl.title = '즐겨찾기 해제'; }
   }
   saveFavorites(favs);
@@ -2490,26 +2490,73 @@ function renderFavorites() {
     return;
   }
 
-  list.innerHTML = favs.map(f => `
-    <div style="background:var(--surface1);border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;">
-      <div style="flex:1;min-width:0;">
-        <div style="display:flex;align-items:center;gap:6px;">
-          <span style="font-weight:700;font-size:14px;">${f.name}</span>
-          <span style="font-size:12px;color:var(--fg3);">${f.code}</span>
+  list.innerHTML = favs.map((f, i) => {
+    const score = f.score || 0;
+    const isStrict = score >= 100;
+    const isBasic  = score >= 67 && score < 100;
+    const isWatch  = score >= 34 && score < 67;
+    const badgeText  = isStrict ? '강력 돌파 ⚡' : isBasic ? '돌파 🔥' : isWatch ? '관찰' : '대기';
+    const badgeColor = (isStrict || isBasic) ? '#22c55e' : isWatch ? '#f59e0b' : '#94a3b8';
+    const fillW     = Math.min(100, score);
+    const fillColor = (isStrict || isBasic) ? 'var(--green)' : isWatch ? 'var(--orange)' : 'var(--border)';
+    const pctFromHigh = f.high20 > 0 ? ((f.curr - f.high20) / f.high20 * 100).toFixed(1) : null;
+    const volRatio    = f.avgVol > 0 ? (f.todayVol / f.avgVol).toFixed(1) : null;
+    const pct52       = f.high52 > 0 ? (f.curr / f.high52 * 100).toFixed(1) : null;
+
+    return `
+    <div class="card" style="margin-bottom:8px;">
+      <!-- 항상 보이는 헤더 행 -->
+      <div style="display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="toggleFavDetail(${i})">
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="font-weight:700;font-size:14px;">${f.name}</span>
+            <span style="font-size:12px;color:var(--fg3);">${f.code}</span>
+            <span style="background:${badgeColor}22;color:${badgeColor};border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;">${badgeText}</span>
+          </div>
+          <div style="font-size:12px;color:var(--fg3);margin-top:2px;">${f.curr ? f.curr.toLocaleString()+'원' : '—'} ${score ? `· ${score}점` : ''}</div>
         </div>
-        <div style="font-size:12px;color:var(--fg3);margin-top:2px;">${f.curr ? f.curr.toLocaleString()+'원' : '—'}</div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+          <button onclick="event.stopPropagation();openOrderModal('${f.code}','${f.name}',${f.curr||0},'buy')"
+            style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;">📈 매수</button>
+          <button onclick="event.stopPropagation();removeFavorite('${f.code}')"
+            style="background:none;border:none;cursor:pointer;font-size:18px;color:#f59e0b;padding:2px;">★</button>
+          <span id="fav-chevron-${i}" style="font-size:12px;color:var(--fg3);transition:transform 0.2s;">▼</span>
+        </div>
       </div>
-      <div style="display:flex;gap:6px;align-items:center;">
-        <button onclick="openOrderModal('${f.code}','${f.name}',${f.curr||0},'buy')"
-          style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">
-          📈 매수
-        </button>
-        <button onclick="removeFavorite('${f.code}')"
-          style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--fg3);padding:2px;">★</button>
+      <!-- 접힌 상세 정보 (기본 숨김) -->
+      <div id="fav-detail-${i}" hidden style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;">
+        <div class="data-row">
+          <span class="data-label">20일 신고가</span>
+          <span class="data-value">${f.high20 ? f.high20.toLocaleString()+'원' : '—'}${pctFromHigh !== null ? ` <span style="font-size:11px;color:${parseFloat(pctFromHigh)>=0?'var(--green)':'var(--red)'}">(${parseFloat(pctFromHigh)>=0?'+':''}${pctFromHigh}%)</span>` : ''}</span>
+        </div>
+        <div class="data-row">
+          <span class="data-label">거래량 / 평균</span>
+          <span class="data-value">${f.todayVol ? f.todayVol.toLocaleString() : '—'} / ${f.avgVol ? f.avgVol.toLocaleString() : '—'}${volRatio ? ` <span style="font-size:11px;color:var(--fg3)">(${volRatio}배)</span>` : ''}</span>
+        </div>
+        <div class="data-row">
+          <span class="data-label">52주 신고가</span>
+          <span class="data-value">${f.high52 ? f.high52.toLocaleString()+'원' : '—'}${pct52 ? ` <span style="font-size:11px;color:${parseFloat(pct52)>=90?'var(--green)':'var(--fg3)'}">(${pct52}%)</span>` : ''}</span>
+        </div>
+        <div class="data-row">
+          <span class="data-label">ATR (14일)</span>
+          <span class="data-value">${f.atr ? f.atr.toLocaleString()+'원' : '—'}</span>
+        </div>
+        <div class="signal-bar" style="margin-top:8px;">
+          <div class="signal-fill" style="width:${fillW}%;background:${fillColor};"></div>
+        </div>
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
+
+window.toggleFavDetail = function(i) {
+  const detail  = document.getElementById(`fav-detail-${i}`);
+  const chevron = document.getElementById(`fav-chevron-${i}`);
+  if (!detail) return;
+  const isHidden = detail.hidden;
+  detail.hidden = !isHidden;
+  chevron.style.transform = isHidden ? 'rotate(180deg)' : '';
+};
 
 window.removeFavorite = function(code) {
   let favs = getFavorites().filter(f => f.code !== code);
