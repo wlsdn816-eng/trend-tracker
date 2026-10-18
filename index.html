@@ -1168,7 +1168,7 @@ function renderScreener() {
     const badgeText  = isStrictBreak ? '강력 돌파 ⚡' : isBasicBreak ? '돌파 🔥' : isWatch ? '관찰' : '대기';
     const pctFromHigh = s.high20 > 0 ? ((s.curr - s.high20) / s.high20 * 100).toFixed(1) : 0;
     const fillW = Math.min(100, score);
-    const fillColor = isBreak ? 'var(--green)' : isWatch ? 'var(--orange)' : 'var(--border)';
+    const fillColor = (isStrictBreak || isBasicBreak) ? 'var(--green)' : isWatch ? 'var(--orange)' : 'var(--border)';
 
     return `<div class="card">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px;">
