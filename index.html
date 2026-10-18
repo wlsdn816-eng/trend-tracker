@@ -1880,20 +1880,56 @@ function renderHoldings() {
   document.getElementById('tf-ret').className = totalRet >= 0 ? 'green' : 'red';
 }
 
+// KV 동기화 (fire-and-forget — 실패해도 로컬 저장은 유지)
+function syncHoldingsToKV() {
+  fetch(`${KIS_WORKER}/save-holdings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ holdings }),
+  }).catch(e => console.warn('KV 동기화 실패 (로컬 저장은 유지됨):', e));
+}
+
 window.deleteHolding = (i) => {
   if (!confirm(`"${holdings[i].name || holdings[i].code}" 포지션을 삭제할까요?`)) return;
   holdings.splice(i, 1);
   save(KEYS_HOLDING, holdings);
+  syncHoldingsToKV();
   renderHoldings();
   renderJournalList();
 };
 
 // 현재가 자동 업데이트 (탭 진입 시 호출)
+// 1순위: Cron이 KV에 저장한 종가 스냅샷 (/holdings-quotes)
+// 2순위: 실시간 조회 (/quotes) — KV에 데이터 없을 때만
 let lastFetchedAt = '';
 async function loadHoldingPrices() {
   if (!holdings.length) return;
   const codes = holdings.map(h => h.code).filter(Boolean);
   if (!codes.length) return;
+
+  try {
+    // 1순위: Cron 종가 스냅샷 (평일 16:00 KST 자동 업데이트)
+    const snapRes = await fetch(`${KIS_WORKER}/holdings-quotes`);
+    if (snapRes.ok) {
+      const snap = await snapRes.json();
+      if (snap.quotes) {
+        holdings.forEach(h => {
+          const q = snap.quotes[h.code];
+          if (q) {
+            h.curPrice = q.curr || h.curPrice;
+            h.dayChange = q.chg || 0;
+          }
+        });
+        save(KEYS_HOLDING, holdings);
+        lastFetchedAt = snap.fetchedAt || '';
+        updateFetchedAtLabel();
+        renderHoldings();
+        return; // 스냅샷으로 완료
+      }
+    }
+  } catch(e) { /* 스냅샷 없으면 실시간으로 fallback */ }
+
+  // 2순위: 실시간 조회 (스냅샷 없을 때)
   try {
     const res = await fetch(`${KIS_WORKER}/quotes?codes=${codes.join(',')}`);
     const data = await res.json();
@@ -1975,6 +2011,7 @@ window.openHoldingModal = () => {
       note: document.getElementById('hf-note').value,
     });
     save(KEYS_HOLDING, holdings);
+    syncHoldingsToKV();
     renderHoldings();
     closeModal();
     // 저장 후 현재가 바로 업데이트
@@ -2038,6 +2075,7 @@ window.openAddBuyModal = (i) => {
     holdings[i].qty = newQty;
     holdings[i].avgPrice = newAvg;
     save(KEYS_HOLDING, holdings);
+    syncHoldingsToKV();
     renderHoldings();
     closeModal();
     loadHoldingPrices();
@@ -2116,6 +2154,7 @@ window.openSellModal = (i) => {
       save(KEYS_HOLDING, holdings);
     }
     save(KEYS_HOLDING, holdings);
+    syncHoldingsToKV();
     renderHoldings();
     renderJournalList();
     closeModal();
