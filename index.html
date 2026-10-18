@@ -825,25 +825,68 @@
           <div class="summary-tile-label">승률</div>
         </div>
         <div class="summary-tile">
-          <div class="summary-tile-val" id="j-pnl">0</div>
+          <div class="summary-tile-val" id="j-pnl">+0</div>
           <div class="summary-tile-label">누적 손익</div>
+        </div>
+        <div class="summary-tile">
+          <div class="summary-tile-val" id="j-avg-ret">0%</div>
+          <div class="summary-tile-label">평균 수익률</div>
         </div>
       </div>
 
-      <div class="section-head">
-        <h2>매매 일지</h2>
-        <button class="btn btn-ghost" id="btn-add-journal" style="padding:6px 10px;font-size:12px;">
+      <!-- 보유중 포지션 섹션 -->
+      <div class="section-head" style="margin-top:4px;">
+        <h2>📦 보유 포지션</h2>
+        <button class="btn btn-ghost" id="btn-add-holding" style="padding:6px 10px;font-size:12px;" onclick="openHoldingModal()">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          기록 추가
+          매수 기록
         </button>
       </div>
 
-      <div class="filter-row">
-        <button class="filter-chip active" data-filter="all">전체</button>
-        <button class="filter-chip" data-filter="win">수익</button>
-        <button class="filter-chip" data-filter="loss">손실</button>
-        <button class="filter-chip" data-filter="break">돌파진입</button>
-        <button class="filter-chip" data-filter="trailing">트레일링</button>
+      <!-- 보유 포지션 테이블 -->
+      <div style="overflow-x:auto;margin-bottom:16px;">
+        <table id="holding-table" style="width:100%;border-collapse:collapse;font-size:12px;min-width:560px;">
+          <thead>
+            <tr style="background:var(--surface1);color:var(--fg-muted);">
+              <th style="padding:8px 6px;text-align:left;font-weight:600;white-space:nowrap;">종목</th>
+              <th style="padding:8px 6px;text-align:right;font-weight:600;white-space:nowrap;">수량</th>
+              <th style="padding:8px 6px;text-align:right;font-weight:600;white-space:nowrap;">평균단가</th>
+              <th style="padding:8px 6px;text-align:right;font-weight:600;white-space:nowrap;">현재가</th>
+              <th style="padding:8px 6px;text-align:right;font-weight:600;white-space:nowrap;">당일±</th>
+              <th style="padding:8px 6px;text-align:right;font-weight:600;white-space:nowrap;">평가금액</th>
+              <th style="padding:8px 6px;text-align:right;font-weight:600;white-space:nowrap;">평가손익</th>
+              <th style="padding:8px 6px;text-align:right;font-weight:600;white-space:nowrap;">수익률</th>
+              <th style="padding:8px 6px;text-align:right;font-weight:600;white-space:nowrap;">비중</th>
+              <th style="padding:8px 6px;text-align:center;font-weight:600;white-space:nowrap;"></th>
+            </tr>
+          </thead>
+          <tbody id="holding-tbody">
+            <tr id="holding-empty-row">
+              <td colspan="10" style="text-align:center;padding:24px;color:var(--fg-muted);font-size:13px;">보유중인 종목이 없습니다</td>
+            </tr>
+          </tbody>
+          <tfoot id="holding-tfoot" style="display:none;">
+            <tr style="background:var(--surface1);font-weight:700;font-size:12px;">
+              <td colspan="4" style="padding:8px 6px;">합계</td>
+              <td style="padding:8px 6px;text-align:right;" id="tf-day-change">—</td>
+              <td style="padding:8px 6px;text-align:right;" id="tf-eval">—</td>
+              <td style="padding:8px 6px;text-align:right;" id="tf-pnl">—</td>
+              <td style="padding:8px 6px;text-align:right;" id="tf-ret">—</td>
+              <td style="padding:8px 6px;text-align:right;">100%</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- 매매 완료 일지 섹션 -->
+      <div class="section-head">
+        <h2>📋 매매 완료 일지</h2>
+        <div style="display:flex;gap:6px;">
+          <select id="journal-year-filter" style="border:1.5px solid var(--border);border-radius:8px;padding:5px 8px;font-size:12px;background:var(--bg);color:var(--fg);outline:none;" onchange="renderJournalList()">
+            <option value="all">전체</option>
+          </select>
+        </div>
       </div>
 
       <div id="journal-list"></div>
@@ -885,15 +928,8 @@
             </div>
           </label>
         </div>
-        <div style="font-size:12px;color:var(--fg-muted);margin-bottom:10px;">
+        <div style="font-size:12px;color:var(--fg-muted);">
           매일 평일 오후 4시 스캔 완료 후 자동 전송됩니다.
-        </div>
-        <!-- 토큰 입력 -->
-        <div style="display:flex;gap:6px;align-items:center;">
-          <input type="password" id="kakao-access-token" placeholder="카카오 액세스 토큰"
-            style="flex:1;border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;background:var(--bg);color:var(--fg);outline:none;min-width:0;">
-          <button onclick="saveKakaoToken()"
-            style="background:#FEE500;border:none;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;color:#000;white-space:nowrap;">저장</button>
         </div>
         <div id="kakao-setting-status" style="font-size:11px;margin-top:6px;color:var(--fg-muted);min-height:16px;"></div>
       </div>
@@ -909,17 +945,17 @@
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
       스크리너
     </button>
-    <button class="tab-btn" data-tab="position">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-      포지션
+    <button class="tab-btn" data-tab="auto">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      자동선별
     </button>
     <button class="tab-btn" data-tab="journal">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
       매매일지
     </button>
-    <button class="tab-btn" data-tab="auto">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      자동선별
+    <button class="tab-btn" data-tab="position">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      포지션
     </button>
   </nav>
 </div>
@@ -1744,168 +1780,343 @@ window.closePosition = (i) => {
     const reason = document.getElementById('close-reason').value;
     const note = document.getElementById('close-note').value;
     const pnl = (closePrice - p.entry) * p.qty;
+    const ret = p.entry > 0 ? ((closePrice - p.entry) / p.entry * 100) : 0;
     const j = {
-      id: uid(), ticker: p.ticker, name: p.name,
-      entryPrice: p.entry, exitPrice: closePrice,
-      qty: p.qty, pnl: Math.round(pnl),
+      id: uid(), code: p.ticker, name: p.name,
+      avgPrice: p.entry, sellPrice: closePrice,
+      qty: p.qty, pnl: Math.round(pnl), ret: +ret.toFixed(2),
       reason, note,
-      entryDate: p.date, exitDate: today(),
-      type: reason
+      buyDate: p.date, sellDate: today(),
     };
     journal.unshift(j);
     save(KEYS.journal, journal);
     positions.splice(i, 1);
     save(KEYS.positions, positions);
     renderPositions();
-    renderJournal();
+    renderJournalList();
     closeModal();
   };
 };
 
-// ─── JOURNAL ────────────────────────────────────────────────
-let journalFilter = 'all';
-document.querySelectorAll('.filter-chip').forEach(chip => {
-  chip.addEventListener('click', () => {
-    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-    chip.classList.add('active');
-    journalFilter = chip.dataset.filter;
-    renderJournal();
-  });
-});
+// ─── HOLDINGS (보유 포지션) ────────────────────────────────────
+const KEYS_HOLDING = 'tf_holdings';
+let holdings = load(KEYS_HOLDING) || [];
 
-function renderJournal() {
+function fmtComma(n) {
+  if (n === undefined || n === null || n === '') return '';
+  return Number(n).toLocaleString('ko-KR');
+}
+
+function renderHoldings() {
+  const tbody = document.getElementById('holding-tbody');
+  const tfoot = document.getElementById('holding-tfoot');
+  const emptyRow = document.getElementById('holding-empty-row');
+
+  if (!holdings.length) {
+    tbody.innerHTML = `<tr id="holding-empty-row"><td colspan="10" style="text-align:center;padding:24px;color:var(--fg-muted);font-size:13px;">보유중인 종목이 없습니다</td></tr>`;
+    tfoot.style.display = 'none';
+    return;
+  }
+
+  // 합계 계산
+  const totalEval = holdings.reduce((s, h) => s + (h.qty * (h.curPrice || h.avgPrice)), 0);
+
+  const rows = holdings.map((h, i) => {
+    const avgP = h.avgPrice || 0;
+    const curP = h.curPrice || avgP;
+    const qty  = h.qty || 0;
+    const evalAmt = qty * curP;
+    const evalPnl = (curP - avgP) * qty;
+    const ret = avgP > 0 ? ((curP - avgP) / avgP * 100) : 0;
+    const weight = totalEval > 0 ? (evalAmt / totalEval * 100) : 0;
+    const dayChg = h.dayChange || 0;
+    const dayChgSign = dayChg >= 0 ? '+' : '';
+    const retSign = ret >= 0 ? '+' : '';
+    const pnlSign = evalPnl >= 0 ? '+' : '';
+
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:10px 6px;">
+        <div style="font-weight:700;font-size:13px;">${h.name || h.code}</div>
+        <div style="font-size:11px;color:var(--fg-muted);">${h.code||''}</div>
+      </td>
+      <td style="padding:10px 6px;text-align:right;">${fmtComma(qty)}</td>
+      <td style="padding:10px 6px;text-align:right;">${fmtComma(avgP)}</td>
+      <td style="padding:10px 6px;text-align:right;">
+        <input type="number" style="width:80px;border:1.5px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12px;background:var(--bg);color:var(--fg);text-align:right;"
+          value="${curP}" placeholder="현재가"
+          onchange="updateCurPrice(${i}, this.value)">
+      </td>
+      <td style="padding:10px 6px;text-align:right;" class="${dayChg >= 0 ? 'green' : 'red'}">${dayChgSign}${dayChg.toFixed(2)}%</td>
+      <td style="padding:10px 6px;text-align:right;">${fmtComma(Math.round(evalAmt))}</td>
+      <td style="padding:10px 6px;text-align:right;" class="${evalPnl >= 0 ? 'green' : 'red'}">${pnlSign}${fmtComma(Math.round(evalPnl))}</td>
+      <td style="padding:10px 6px;text-align:right;" class="${ret >= 0 ? 'green' : 'red'}">${retSign}${ret.toFixed(2)}%</td>
+      <td style="padding:10px 6px;text-align:right;">${weight.toFixed(1)}%</td>
+      <td style="padding:10px 6px;text-align:center;">
+        <div style="display:flex;gap:4px;justify-content:center;">
+          <button onclick="openSellModal(${i})" style="background:#ef4444;border:none;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer;color:#fff;">매도</button>
+          <button onclick="deleteHolding(${i})" style="background:var(--surface1);border:none;border-radius:6px;padding:4px 6px;font-size:11px;cursor:pointer;color:var(--fg-muted);">✕</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  tbody.innerHTML = rows;
+  tfoot.style.display = '';
+
+  // 합계 footer
+  const totalDayPnl = holdings.reduce((s,h) => s + ((h.curPrice||h.avgPrice||0)*h.qty*(h.dayChange||0)/100), 0);
+  const totalCost = holdings.reduce((s,h) => s + (h.avgPrice||0)*h.qty, 0);
+  const totalPnlAmt = totalEval - totalCost;
+  const totalRet = totalCost > 0 ? (totalPnlAmt / totalCost * 100) : 0;
+
+  document.getElementById('tf-day-change').textContent = (totalDayPnl>=0?'+':'')+fmtComma(Math.round(totalDayPnl))+'원';
+  document.getElementById('tf-day-change').className = totalDayPnl >= 0 ? 'green' : 'red';
+  document.getElementById('tf-eval').textContent = fmtComma(Math.round(totalEval))+'원';
+  document.getElementById('tf-pnl').textContent = (totalPnlAmt>=0?'+':'')+fmtComma(Math.round(totalPnlAmt))+'원';
+  document.getElementById('tf-pnl').className = totalPnlAmt >= 0 ? 'green' : 'red';
+  document.getElementById('tf-ret').textContent = (totalRet>=0?'+':'')+totalRet.toFixed(2)+'%';
+  document.getElementById('tf-ret').className = totalRet >= 0 ? 'green' : 'red';
+}
+
+window.updateCurPrice = (i, val) => {
+  holdings[i].curPrice = +val;
+  save(KEYS_HOLDING, holdings);
+  renderHoldings();
+};
+
+window.deleteHolding = (i) => {
+  if (!confirm(`"${holdings[i].name || holdings[i].code}" 포지션을 삭제할까요?`)) return;
+  holdings.splice(i, 1);
+  save(KEYS_HOLDING, holdings);
+  renderHoldings();
+  renderJournalList();
+};
+
+window.openHoldingModal = () => {
+  openModal('📦 매수 기록', `
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">종목코드</label>
+        <input class="form-input" id="hf-code" placeholder="005930"></div>
+      <div class="form-group"><label class="form-label">종목명</label>
+        <input class="form-input" id="hf-name" placeholder="삼성전자"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">매수 수량 (주)</label>
+        <input type="number" class="form-input" id="hf-qty" placeholder="100"></div>
+      <div class="form-group"><label class="form-label">평균단가 (원)</label>
+        <input type="number" class="form-input" id="hf-avg" placeholder="70000"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">현재가 (원)</label>
+        <input type="number" class="form-input" id="hf-cur" placeholder="72000"></div>
+      <div class="form-group"><label class="form-label">매수일</label>
+        <input type="date" class="form-input" id="hf-date" value="${today()}"></div>
+    </div>
+    <div class="form-group"><label class="form-label">메모</label>
+      <input class="form-input" id="hf-note" placeholder="매수 이유, 전략 등..."></div>
+    <button class="btn btn-primary" id="hf-submit">추가</button>
+  `, null);
+  document.getElementById('hf-submit').onclick = () => {
+    const code = document.getElementById('hf-code').value.trim().toUpperCase();
+    const name = document.getElementById('hf-name').value.trim();
+    const qty  = +document.getElementById('hf-qty').value;
+    const avgPrice = +document.getElementById('hf-avg').value;
+    const curPrice = +(document.getElementById('hf-cur').value || avgPrice);
+    if (!code || !qty || !avgPrice) { alert('종목코드, 수량, 평균단가는 필수입니다.'); return; }
+    holdings.push({
+      id: uid(), code, name, qty, avgPrice, curPrice,
+      dayChange: 0,
+      buyDate: document.getElementById('hf-date').value,
+      note: document.getElementById('hf-note').value,
+    });
+    save(KEYS_HOLDING, holdings);
+    renderHoldings();
+    closeModal();
+  };
+};
+
+// 매도 모달 → 수익률 계산 후 매매일지 저장
+window.openSellModal = (i) => {
+  const h = holdings[i];
+  openModal(`📤 매도: ${h.name || h.code}`, `
+    <div style="background:var(--surface1);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:13px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="color:var(--fg-muted);">평균단가</span><span>${fmtComma(h.avgPrice)}원</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;">
+        <span style="color:var(--fg-muted);">보유 수량</span><span>${fmtComma(h.qty)}주</span>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">매도 단가 (원)</label>
+        <input type="number" class="form-input" id="sf-price" placeholder="${h.curPrice||h.avgPrice}" oninput="calcSellPreview(${i})"></div>
+      <div class="form-group"><label class="form-label">매도 수량 (주)</label>
+        <input type="number" class="form-input" id="sf-qty" value="${h.qty}" oninput="calcSellPreview(${i})"></div>
+    </div>
+    <div id="sell-preview" style="background:var(--surface1);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:13px;display:none;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="color:var(--fg-muted);">매도 금액</span><span id="sp-total">—</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="color:var(--fg-muted);">손익</span><span id="sp-pnl" style="font-weight:700;">—</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;">
+        <span style="color:var(--fg-muted);">수익률</span><span id="sp-ret" style="font-weight:700;">—</span>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">매도일</label>
+        <input type="date" class="form-input" id="sf-date" value="${today()}"></div>
+      <div class="form-group"><label class="form-label">청산 사유</label>
+        <select class="form-input" id="sf-reason">
+          <option value="target">목표가 도달</option>
+          <option value="trailing">트레일링 스탑</option>
+          <option value="stoploss">손절</option>
+          <option value="manual">수동 청산</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">메모</label>
+      <input class="form-input" id="sf-note" placeholder="매도 이유, 배운 점..."></div>
+    <button class="btn btn-primary" id="sf-submit" style="background:#ef4444;">매도 확정 & 일지 저장</button>
+  `, null);
+  document.getElementById('sf-submit').onclick = () => {
+    const sellPrice = +document.getElementById('sf-price').value;
+    const sellQty   = +document.getElementById('sf-qty').value;
+    if (!sellPrice || !sellQty) { alert('매도 단가와 수량을 입력하세요.'); return; }
+    const pnl = Math.round((sellPrice - h.avgPrice) * sellQty);
+    const ret = h.avgPrice > 0 ? ((sellPrice - h.avgPrice) / h.avgPrice * 100) : 0;
+    // 매매일지 저장
+    const entry = {
+      id: uid(),
+      code: h.code, name: h.name,
+      qty: sellQty, avgPrice: h.avgPrice, sellPrice,
+      pnl, ret: +ret.toFixed(2),
+      reason: document.getElementById('sf-reason').value,
+      note: document.getElementById('sf-note').value,
+      buyDate: h.buyDate,
+      sellDate: document.getElementById('sf-date').value,
+    };
+    journal.unshift(entry);
+    save(KEYS.journal, journal);
+    // 수량 처리
+    if (sellQty >= h.qty) {
+      holdings.splice(i, 1);
+    } else {
+      holdings[i].qty -= sellQty;
+      save(KEYS_HOLDING, holdings);
+    }
+    save(KEYS_HOLDING, holdings);
+    renderHoldings();
+    renderJournalList();
+    closeModal();
+    alert(`매도 완료! 수익률: ${ret >= 0 ? '+' : ''}${ret.toFixed(2)}% (${pnl >= 0 ? '+' : ''}${fmtComma(pnl)}원)`);
+  };
+};
+
+window.calcSellPreview = (i) => {
+  const h = holdings[i];
+  const sp = +document.getElementById('sf-price').value;
+  const sq = +document.getElementById('sf-qty').value;
+  const prev = document.getElementById('sell-preview');
+  if (!sp || !sq) { prev.style.display = 'none'; return; }
+  prev.style.display = '';
+  const total = sp * sq;
+  const pnl   = (sp - h.avgPrice) * sq;
+  const ret   = h.avgPrice > 0 ? ((sp - h.avgPrice) / h.avgPrice * 100) : 0;
+  document.getElementById('sp-total').textContent = fmtComma(Math.round(total)) + '원';
+  const pnlEl = document.getElementById('sp-pnl');
+  const retEl = document.getElementById('sp-ret');
+  pnlEl.textContent = (pnl>=0?'+':'')+fmtComma(Math.round(pnl))+'원';
+  pnlEl.style.color = pnl>=0 ? 'var(--green)' : 'var(--red)';
+  retEl.textContent = (ret>=0?'+':'')+ret.toFixed(2)+'%';
+  retEl.style.color = ret>=0 ? 'var(--green)' : 'var(--red)';
+};
+
+// ─── JOURNAL 완료 일지 ─────────────────────────────────────────
+function renderJournalList() {
   const list = document.getElementById('journal-list');
-  const filtered = journal.filter(j => {
-    if (journalFilter === 'all') return true;
-    if (journalFilter === 'win') return j.pnl > 0;
-    if (journalFilter === 'loss') return j.pnl < 0;
-    if (journalFilter === 'break') return j.type === 'break';
-    if (journalFilter === 'trailing') return j.type === 'trailing';
-    return true;
-  });
+  const yearSel = document.getElementById('journal-year-filter');
+  const selYear = yearSel ? yearSel.value : 'all';
+
+  // 연도 필터 옵션 구성
+  if (yearSel) {
+    const years = [...new Set(journal.map(j => (j.sellDate || '').slice(0,4)).filter(Boolean))].sort((a,b)=>b-a);
+    const curOpts = [...yearSel.options].map(o=>o.value);
+    years.forEach(y => { if (!curOpts.includes(y)) { const o = document.createElement('option'); o.value=y; o.textContent=y+'년'; yearSel.appendChild(o); } });
+    if (selYear !== 'all') yearSel.value = selYear;
+  }
+
+  const filtered = selYear === 'all' ? journal : journal.filter(j => (j.sellDate||'').startsWith(selYear));
 
   // Summary
-  const totalPnl = journal.reduce((a, j) => a + (j.pnl || 0), 0);
+  const totalPnl = journal.reduce((s,j) => s+(j.pnl||0), 0);
   const wins = journal.filter(j => j.pnl > 0).length;
-  const winRate = journal.length > 0 ? Math.round(wins / journal.length * 100) : 0;
+  const winRate = journal.length > 0 ? Math.round(wins/journal.length*100) : 0;
+  const avgRet  = journal.length > 0 ? (journal.reduce((s,j)=>s+(j.ret||0),0)/journal.length) : 0;
   document.getElementById('j-total').textContent = journal.length;
   document.getElementById('j-winrate').textContent = winRate + '%';
   const pnlEl = document.getElementById('j-pnl');
-  pnlEl.textContent = (totalPnl >= 0 ? '+' : '') + (totalPnl >= 10000 ? (totalPnl/10000).toFixed(0)+'만' : fmt(totalPnl));
-  pnlEl.className = 'summary-tile-val ' + (totalPnl >= 0 ? 'green' : 'red');
+  pnlEl.textContent = (totalPnl>=0?'+':'')+fmtComma(Math.round(totalPnl))+'원';
+  pnlEl.className = 'summary-tile-val ' + (totalPnl>=0?'green':'red');
+  const retEl = document.getElementById('j-avg-ret');
+  retEl.textContent = (avgRet>=0?'+':'')+avgRet.toFixed(1)+'%';
+  retEl.className = 'summary-tile-val ' + (avgRet>=0?'green':'red');
 
   if (!filtered.length) {
     list.innerHTML = `<div class="empty-state">
       <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-      <p>매매 기록이 없습니다</p>
+      <p>매매 완료 기록이 없습니다</p>
     </div>`;
     return;
   }
 
-  const reasonLabel = { trailing: '트레일링 스탑', break: 'ATR 손절', target: '목표가', manual: '수동 청산' };
+  const reasonLabel = { target: '목표가 도달', trailing: '트레일링 스탑', stoploss: '손절', manual: '수동 청산' };
   list.innerHTML = filtered.map((j, i) => {
     const idx = journal.indexOf(j);
-    const pnlPct = j.entryPrice > 0 ? ((j.exitPrice - j.entryPrice) / j.entryPrice * 100).toFixed(2) : 0;
-    const badgeClass = j.pnl > 0 ? 'badge-green' : 'badge-red';
+    const pnlSign = (j.pnl||0) >= 0 ? '+' : '';
+    const retSign = (j.ret||0) >= 0 ? '+' : '';
+    const isWin = (j.pnl||0) >= 0;
     return `<div class="journal-card">
       <div class="journal-header">
         <div>
-          <span class="journal-ticker">${j.ticker}</span>
-          <span style="font-size:11px;color:var(--fg3);margin-left:6px;">${j.name || ''}</span>
+          <span class="journal-ticker">${j.name||j.code}</span>
+          <span style="font-size:11px;color:var(--fg-muted);margin-left:6px;">${j.code||''}</span>
         </div>
         <div style="display:flex;align-items:center;gap:6px;">
-          <span class="badge ${badgeClass}">${j.pnl > 0 ? '수익' : '손실'}</span>
-          <button class="btn btn-danger" style="padding:3px 8px;font-size:11px;" onclick="deleteJournal(${idx})">삭제</button>
+          <span class="badge ${isWin?'badge-green':'badge-red'}">${isWin?'수익':'손실'}</span>
+          <button class="btn btn-danger" style="padding:3px 8px;font-size:11px;" onclick="deleteJournalEntry(${idx})">삭제</button>
         </div>
       </div>
-      <div class="journal-pnl ${j.pnl >= 0 ? 'green' : 'red'}">
-        ${j.pnl >= 0 ? '+' : ''}${fmt(j.pnl)}원 <span style="font-size:13px;">(${j.pnl >= 0 ? '+' : ''}${pnlPct}%)</span>
+      <div class="journal-pnl ${isWin?'green':'red'}">
+        ${pnlSign}${fmtComma(Math.round(j.pnl||0))}원 <span style="font-size:13px;">(${retSign}${(j.ret||0).toFixed(2)}%)</span>
       </div>
       <div class="data-row">
-        <span class="data-label">진입가 → 청산가</span>
-        <span class="data-value">${fmt(j.entryPrice)} → ${fmt(j.exitPrice)}</span>
+        <span class="data-label">평균단가 → 매도가</span>
+        <span class="data-value">${fmtComma(j.avgPrice)} → ${fmtComma(j.sellPrice)}</span>
       </div>
       <div class="data-row">
         <span class="data-label">수량 / 청산 사유</span>
-        <span class="data-value">${j.qty}주 / ${reasonLabel[j.type] || j.type}</span>
+        <span class="data-value">${fmtComma(j.qty)}주 / ${reasonLabel[j.reason]||j.reason||'—'}</span>
       </div>
       <div class="data-row">
         <span class="data-label">기간</span>
-        <span class="data-value">${j.entryDate} ~ ${j.exitDate}</span>
+        <span class="data-value">${j.buyDate||'—'} ~ ${j.sellDate||'—'}</span>
       </div>
       ${j.note ? `<div class="journal-note">"${j.note}"</div>` : ''}
     </div>`;
   }).join('');
 }
 
-function journalFormHtml(j = {}) {
-  return `
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">티커</label>
-        <input class="form-input" id="jf-ticker" placeholder="005930" value="${j.ticker||''}"></div>
-      <div class="form-group"><label class="form-label">종목명</label>
-        <input class="form-input" id="jf-name" placeholder="삼성전자" value="${j.name||''}"></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">진입가 (원)</label>
-        <input type="number" class="form-input" id="jf-entry" value="${j.entryPrice||''}"></div>
-      <div class="form-group"><label class="form-label">청산가 (원)</label>
-        <input type="number" class="form-input" id="jf-exit" value="${j.exitPrice||''}"></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">수량 (주)</label>
-        <input type="number" class="form-input" id="jf-qty" value="${j.qty||''}"></div>
-      <div class="form-group"><label class="form-label">청산 사유</label>
-        <select class="form-input" id="jf-type">
-          <option value="trailing" ${j.type==='trailing'?'selected':''}>트레일링 스탑</option>
-          <option value="break" ${j.type==='break'?'selected':''}>ATR 손절</option>
-          <option value="target" ${j.type==='target'?'selected':''}>목표가</option>
-          <option value="manual" ${j.type==='manual'?'selected':''}>수동 청산</option>
-        </select>
-      </div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">진입일</label>
-        <input type="date" class="form-input" id="jf-edate" value="${j.entryDate||today()}"></div>
-      <div class="form-group"><label class="form-label">청산일</label>
-        <input type="date" class="form-input" id="jf-xdate" value="${j.exitDate||today()}"></div>
-    </div>
-    <div class="form-group"><label class="form-label">메모</label>
-      <input class="form-input" id="jf-note" placeholder="매매 이유, 배운 점 등..." value="${j.note||''}"></div>
-    <button class="btn btn-primary" id="jf-submit">저장</button>
-  `;
-}
-
-document.getElementById('btn-add-journal').addEventListener('click', () => {
-  openModal('매매 기록', journalFormHtml(), null);
-  document.getElementById('jf-submit').onclick = () => {
-    const entryPrice = +document.getElementById('jf-entry').value;
-    const exitPrice = +document.getElementById('jf-exit').value;
-    const qty = +document.getElementById('jf-qty').value;
-    const j = {
-      id: uid(),
-      ticker: document.getElementById('jf-ticker').value.toUpperCase(),
-      name: document.getElementById('jf-name').value,
-      entryPrice, exitPrice, qty,
-      pnl: Math.round((exitPrice - entryPrice) * qty),
-      type: document.getElementById('jf-type').value,
-      note: document.getElementById('jf-note').value,
-      entryDate: document.getElementById('jf-edate').value,
-      exitDate: document.getElementById('jf-xdate').value,
-    };
-    if (!j.ticker || !j.entryPrice) return;
-    journal.unshift(j);
-    save(KEYS.journal, journal);
-    renderJournal();
-    closeModal();
-  };
-});
-
-window.deleteJournal = (i) => {
+window.deleteJournalEntry = (i) => {
+  if (!confirm('이 매매 기록을 삭제할까요?')) return;
   journal.splice(i, 1);
   save(KEYS.journal, journal);
-  renderJournal();
+  renderJournalList();
 };
+
+// 기존 코드 호환 alias
+function renderJournal() { renderJournalList(); }
 
 // ─── 자동선별 탭 ────────────────────────────────────────────
 let scanMode = 'basic';
@@ -2280,6 +2491,7 @@ document.getElementById('om-limit-price').addEventListener('input', updateOrderC
 // ─── Init ────────────────────────────────────────────────────
 renderScreener();
 renderPositions();
-renderJournal();
+renderHoldings();
+renderJournalList();
 renderFavorites();
 </script>
