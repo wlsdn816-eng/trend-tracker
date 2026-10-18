@@ -837,10 +837,13 @@
       <!-- 보유중 포지션 섹션 -->
       <div class="section-head" style="margin-top:4px;">
         <h2>📦 보유 포지션</h2>
-        <button class="btn btn-ghost" id="btn-add-holding" style="padding:6px 10px;font-size:12px;" onclick="openHoldingModal()">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          매수 기록
-        </button>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span id="fetched-at-label" style="font-size:11px;color:var(--fg-muted);"></span>
+          <button class="btn btn-ghost" id="btn-add-holding" style="padding:6px 10px;font-size:12px;" onclick="openHoldingModal()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            매수 기록
+          </button>
+        </div>
       </div>
 
       <!-- 보유 포지션 테이블 -->
@@ -1842,9 +1845,7 @@ function renderHoldings() {
       <td style="padding:10px 6px;text-align:right;">${fmtComma(qty)}</td>
       <td style="padding:10px 6px;text-align:right;">${fmtComma(avgP)}</td>
       <td style="padding:10px 6px;text-align:right;">
-        <input type="number" style="width:80px;border:1.5px solid var(--border);border-radius:6px;padding:4px 6px;font-size:12px;background:var(--bg);color:var(--fg);text-align:right;"
-          value="${curP}" placeholder="현재가"
-          onchange="updateCurPrice(${i}, this.value)">
+        <span style="font-size:13px;">${fmtComma(curP)}</span>
       </td>
       <td style="padding:10px 6px;text-align:right;" class="${dayChg >= 0 ? 'green' : 'red'}">${dayChgSign}${dayChg.toFixed(2)}%</td>
       <td style="padding:10px 6px;text-align:right;">${fmtComma(Math.round(evalAmt))}</td>
@@ -1853,6 +1854,7 @@ function renderHoldings() {
       <td style="padding:10px 6px;text-align:right;">${weight.toFixed(1)}%</td>
       <td style="padding:10px 6px;text-align:center;">
         <div style="display:flex;gap:4px;justify-content:center;">
+          <button onclick="openAddBuyModal(${i})" style="background:#3b82f6;border:none;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer;color:#fff;">매수</button>
           <button onclick="openSellModal(${i})" style="background:#ef4444;border:none;border-radius:6px;padding:4px 8px;font-size:11px;font-weight:700;cursor:pointer;color:#fff;">매도</button>
           <button onclick="deleteHolding(${i})" style="background:var(--surface1);border:none;border-radius:6px;padding:4px 6px;font-size:11px;cursor:pointer;color:var(--fg-muted);">✕</button>
         </div>
@@ -1878,12 +1880,6 @@ function renderHoldings() {
   document.getElementById('tf-ret').className = totalRet >= 0 ? 'green' : 'red';
 }
 
-window.updateCurPrice = (i, val) => {
-  holdings[i].curPrice = +val;
-  save(KEYS_HOLDING, holdings);
-  renderHoldings();
-};
-
 window.deleteHolding = (i) => {
   if (!confirm(`"${holdings[i].name || holdings[i].code}" 포지션을 삭제할까요?`)) return;
   holdings.splice(i, 1);
@@ -1892,39 +1888,88 @@ window.deleteHolding = (i) => {
   renderJournalList();
 };
 
+// 현재가 자동 업데이트 (탭 진입 시 호출)
+let lastFetchedAt = '';
+async function loadHoldingPrices() {
+  if (!holdings.length) return;
+  const codes = holdings.map(h => h.code).filter(Boolean);
+  if (!codes.length) return;
+  try {
+    const res = await fetch(`${KIS_WORKER}/quotes?codes=${codes.join(',')}`);
+    const data = await res.json();
+    if (data.quotes) {
+      data.quotes.forEach(q => {
+        holdings.forEach(h => {
+          if (h.code === q.code) {
+            h.curPrice = q.curr || h.curPrice;
+            h.dayChange = q.chg || 0;
+          }
+        });
+      });
+      save(KEYS_HOLDING, holdings);
+      lastFetchedAt = data.fetchedAt || '';
+      updateFetchedAtLabel();
+      renderHoldings();
+    }
+  } catch(e) {
+    console.warn('현재가 조회 실패:', e);
+  }
+}
+
+function updateFetchedAtLabel() {
+  const el = document.getElementById('fetched-at-label');
+  if (!el) return;
+  if (!lastFetchedAt) { el.textContent = ''; return; }
+  // "2026-10-16" → "2026년 10월 16일 종가기준"
+  const [y, m, d] = lastFetchedAt.split('-');
+  el.textContent = `${y}년 ${parseInt(m)}월 ${parseInt(d)}일 종가기준`;
+}
+
 window.openHoldingModal = () => {
   openModal('📦 매수 기록', `
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">종목코드</label>
-        <input class="form-input" id="hf-code" placeholder="005930"></div>
-      <div class="form-group"><label class="form-label">종목명</label>
-        <input class="form-input" id="hf-name" placeholder="삼성전자"></div>
-    </div>
+    <div class="form-group"><label class="form-label">종목명</label>
+      <input class="form-input" id="hf-name" placeholder="삼성전자" oninput="calcHoldingEval()"></div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">매수 수량 (주)</label>
-        <input type="number" class="form-input" id="hf-qty" placeholder="100"></div>
+        <input type="number" class="form-input" id="hf-qty" placeholder="100" oninput="calcHoldingEval()"></div>
       <div class="form-group"><label class="form-label">평균단가 (원)</label>
-        <input type="number" class="form-input" id="hf-avg" placeholder="70000"></div>
+        <input type="number" class="form-input" id="hf-avg" placeholder="70000" oninput="calcHoldingEval()"></div>
     </div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">현재가 (원)</label>
-        <input type="number" class="form-input" id="hf-cur" placeholder="72000"></div>
-      <div class="form-group"><label class="form-label">매수일</label>
-        <input type="date" class="form-input" id="hf-date" value="${today()}"></div>
+    <div class="form-group">
+      <label class="form-label" style="color:var(--fg-muted);">평가금액 (자동계산)</label>
+      <div style="background:var(--surface1);border-radius:8px;padding:10px 14px;font-size:14px;font-weight:700;min-height:38px;" id="hf-eval">—</div>
     </div>
+    <div class="form-group"><label class="form-label">매수일</label>
+      <input type="date" class="form-input" id="hf-date" value="${today()}"></div>
     <div class="form-group"><label class="form-label">메모</label>
       <input class="form-input" id="hf-note" placeholder="매수 이유, 전략 등..."></div>
     <button class="btn btn-primary" id="hf-submit">추가</button>
   `, null);
-  document.getElementById('hf-submit').onclick = () => {
-    const code = document.getElementById('hf-code').value.trim().toUpperCase();
+
+  window.calcHoldingEval = () => {
+    const qty = +document.getElementById('hf-qty').value || 0;
+    const avg = +document.getElementById('hf-avg').value || 0;
+    const el = document.getElementById('hf-eval');
+    el.textContent = qty && avg ? fmtComma(Math.round(qty * avg)) + '원' : '—';
+  };
+
+  document.getElementById('hf-submit').onclick = async () => {
     const name = document.getElementById('hf-name').value.trim();
     const qty  = +document.getElementById('hf-qty').value;
     const avgPrice = +document.getElementById('hf-avg').value;
-    const curPrice = +(document.getElementById('hf-cur').value || avgPrice);
-    if (!code || !qty || !avgPrice) { alert('종목코드, 수량, 평균단가는 필수입니다.'); return; }
+    if (!name || !qty || !avgPrice) { alert('종목명, 수량, 평균단가는 필수입니다.'); return; }
+
+    // 종목코드 자동 조회
+    let code = '';
+    try {
+      const r = await fetch(`${KIS_WORKER}/search?q=${encodeURIComponent(name)}`);
+      const d = await r.json();
+      if (d.results && d.results.length) code = d.results[0].code;
+    } catch(e) { /* 조회 실패 시 코드 없이 저장 */ }
+
     holdings.push({
-      id: uid(), code, name, qty, avgPrice, curPrice,
+      id: uid(), code, name, qty, avgPrice,
+      curPrice: avgPrice, // 최신 현재가는 loadHoldingPrices()가 덮어씀
       dayChange: 0,
       buyDate: document.getElementById('hf-date').value,
       note: document.getElementById('hf-note').value,
@@ -1932,6 +1977,70 @@ window.openHoldingModal = () => {
     save(KEYS_HOLDING, holdings);
     renderHoldings();
     closeModal();
+    // 저장 후 현재가 바로 업데이트
+    loadHoldingPrices();
+  };
+};
+
+// 추가 매수 모달
+window.openAddBuyModal = (i) => {
+  const h = holdings[i];
+  openModal(`➕ 추가 매수: ${h.name || h.code}`, `
+    <div style="background:var(--surface1);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:13px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="color:var(--fg-muted);">현재 평균단가</span><span>${fmtComma(h.avgPrice)}원</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;">
+        <span style="color:var(--fg-muted);">현재 보유 수량</span><span>${fmtComma(h.qty)}주</span>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">추가 매수 수량 (주)</label>
+        <input type="number" class="form-input" id="ab-qty" placeholder="50" oninput="calcAddBuyPreview(${i})"></div>
+      <div class="form-group"><label class="form-label">매수 단가 (원)</label>
+        <input type="number" class="form-input" id="ab-price" placeholder="${h.curPrice||h.avgPrice}" oninput="calcAddBuyPreview(${i})"></div>
+    </div>
+    <div id="ab-preview" style="background:var(--surface1);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:13px;display:none;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="color:var(--fg-muted);">신규 평균단가</span><span id="ab-new-avg" style="font-weight:700;">—</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span style="color:var(--fg-muted);">총 수량</span><span id="ab-new-qty">—</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;">
+        <span style="color:var(--fg-muted);">평가금액</span><span id="ab-new-eval">—</span>
+      </div>
+    </div>
+    <button class="btn btn-primary" id="ab-submit" style="background:#3b82f6;">추가 매수 확정</button>
+  `, null);
+
+  window.calcAddBuyPreview = (idx) => {
+    const h2 = holdings[idx];
+    const addQty = +document.getElementById('ab-qty').value || 0;
+    const addPrice = +document.getElementById('ab-price').value || 0;
+    const preview = document.getElementById('ab-preview');
+    if (!addQty || !addPrice) { preview.style.display = 'none'; return; }
+    const newQty = h2.qty + addQty;
+    const newAvg = Math.round((h2.qty * h2.avgPrice + addQty * addPrice) / newQty);
+    const newEval = newQty * (h2.curPrice || newAvg);
+    preview.style.display = '';
+    document.getElementById('ab-new-avg').textContent = fmtComma(newAvg) + '원';
+    document.getElementById('ab-new-qty').textContent = fmtComma(newQty) + '주';
+    document.getElementById('ab-new-eval').textContent = fmtComma(Math.round(newEval)) + '원';
+  };
+
+  document.getElementById('ab-submit').onclick = () => {
+    const addQty = +document.getElementById('ab-qty').value;
+    const addPrice = +document.getElementById('ab-price').value;
+    if (!addQty || !addPrice) { alert('수량과 단가를 입력하세요.'); return; }
+    const newQty = h.qty + addQty;
+    const newAvg = Math.round((h.qty * h.avgPrice + addQty * addPrice) / newQty);
+    holdings[i].qty = newQty;
+    holdings[i].avgPrice = newAvg;
+    save(KEYS_HOLDING, holdings);
+    renderHoldings();
+    closeModal();
+    loadHoldingPrices();
   };
 };
 
@@ -2269,6 +2378,9 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     }
     if (btn.dataset.tab === 'screener') {
       renderFavorites();
+    }
+    if (btn.dataset.tab === 'journal') {
+      loadHoldingPrices();
     }
   });
 });
