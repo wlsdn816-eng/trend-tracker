@@ -781,7 +781,7 @@
   <main class="main-content">
 
     <!-- ══ HOME 탭 ═════════════════════════════════════════════ -->
-    <div class="tab-panel" id="panel-home">
+    <div class="tab-panel active" id="panel-home">
       <div style="padding: 8px 0 60px;">
 
         <!-- 지수 카드 -->
@@ -841,7 +841,7 @@
     </div>
 
     <!-- ══ 스크리너 탭 ══════════════════════════════════════════ -->
-    <div class="tab-panel active" id="panel-screener">
+    <div class="tab-panel" id="panel-screener">
 
       <!-- 요약 타일 -->
       <div class="summary-row" id="screener-summary">
@@ -1129,11 +1129,11 @@
 
   <!-- Bottom Tab Navigation -->
   <nav class="tab-nav">
-    <button class="tab-btn" data-tab="home">
+    <button class="tab-btn active" data-tab="home">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
       홈
     </button>
-    <button class="tab-btn active" data-tab="screener">
+    <button class="tab-btn" data-tab="screener">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
       스크리너
     </button>
@@ -3101,21 +3101,54 @@ function renderHomeInvestor(data) {
   body.innerHTML = makeSection('코스피', data.kospi) + makeSection('코스닥', data.kosdaq);
 }
 
+// 업종코드 → 대표 종목 매핑 (코스피/코스닥 주요 업종 대표주)
+const SECTOR_STOCKS = {
+  '0001':['005930','000660','005380','035720','051910'], // 종합(KOSPI): 삼성전자,SK하이닉스,현대차,카카오,LG화학
+  '0002':['005930','000660','005380','035420','051910'], // 대형주
+  '0005':['097950','003230','004370','005180','000080'], // 음식료: CJ제일제당,삼양식품,농심,OB맥주,동양
+  '0008':['051910','006400','011170','010950','096770'], // 화학: LG화학,삼성SDI,롯데케미칼,S-Oil,SK이노
+  '0009':['207940','068270','326030','105560','128940'], // 의약품: 삼성바이오,셀트리온,SK바이오팜,KB금융,한미약품
+  '0011':['005490','004020','002790','010140','024110'], // 철강금속: POSCO,현대제철,아세아,삼성중공업,기업은행
+  '0012':['042660','000150','064350','012450','267250'], // 기계: 두산에너빌리티,두산,현대두산인프라,한화에어로,HD현대중공업
+  '0013':['005930','000660','035420','066570','009150'], // 전기전자: 삼성전자,SK하이닉스,NAVER,LG전자,삼성전기
+  '0015':['005380','000270','012330','018880','064350'], // 운수장비: 현대차,기아,현대모비스,한온시스템,현대두산인프라
+  '0016':['035720','028300','069960','004170','026960'], // 유통업: 카카오,BGF리테일,현대백화점,신세계,동서
+  '0018':['000720','028260','047040','034220','294870'], // 건설: 현대건설,삼성물산,대우건설,LG디스플레이,HDC현산
+  '0021':['105560','086790','055550','316140','139130'], // 금융업: KB금융,하나금융,신한지주,우리금융,DGB금융
+  '0022':['105560','086790','055550','316140','138930'], // 은행
+  '0023':['016360','071050','030200','003690','001270'], // 증권: 삼성증권,한국금융지주,KT&G,삼양식품,부국증권
+  '0025':['035420','035720','259960','039130','137310'], // 서비스업: NAVER,카카오,크래프톤,이마트,코오롱
+  '0026':['005930','000660','005380','051910','006400'], // 제조업
+  '1001':['035900','086900','091990','263750','122870'], // 코스닥: JYP,메디톡스,카카오게임즈,펄어비스,와이지엔터
+  '1009':['196170','068760','086820','003030','048830'], // 코스닥 화학
+  '1010':['068270','196170','141080','214370','263750'], // 코스닥 제약
+  '1013':['086900','010140','214430','241560','091990'], // 코스닥 기계
+  '1014':['035900','066570','091990','263750','036570'], // 일반전기전자: JYP,LG전자,카카오게임즈,펄어비스,엔씨소프트
+  '1023':['033780','036570','263750','112040','078600'], // IT부품
+  '1024':['259960','263750','036570','251270','112040'], // 디지털컨텐츠: 크래프톤,펄어비스,엔씨소프트,넷마블
+  '1025':['035420','035720','047560','030520','053800'], // 소프트웨어: NAVER,카카오,카카오뱅크,넥슨게임즈
+  '1027':['000660','293490','240810','088980','054620'], // 통신장비: SK하이닉스,케이엔에스,원익IPS
+};
+
 function renderHomeSector(data) {
   const grid = document.getElementById('home-sector-grid');
   if (!data.sectors || !data.sectors.length) {
     grid.innerHTML = '<div style="color:var(--fg3);font-size:13px;text-align:center;padding:20px 0;grid-column:1/-1;">데이터 없음</div>';
     return;
   }
-  grid.innerHTML = data.sectors.map(s => {
+
+  // 상위 12개만 표시 (등락률 기준 이미 정렬된 상태)
+  const top12 = data.sectors.slice(0, 12);
+
+  grid.innerHTML = top12.map(s => {
     const cs = colorStyle(s.chg);
-    return `<div class="sector-tile" onclick="openStockDetail('${s.code}','${s.name}')">
+    return `<div class="sector-tile" onclick="openSectorDetail('${s.code}','${s.name}')">
       <div class="sector-tile-name">${s.name}</div>
       <div class="sector-tile-chg" style="${cs}">${signStr(s.chg)}${s.chg.toFixed(2)}%</div>
     </div>`;
   }).join('');
 
-  // 주도주: chg 상위 5개 종목
+  // 주도주: chg 상위 5개 업종
   const leaders = [...data.sectors].sort((a,b) => b.chg - a.chg).slice(0, 5);
   const leaderEl = document.getElementById('home-leader-list');
   leaderEl.innerHTML = leaders.map((s, i) => {
@@ -3123,7 +3156,7 @@ function renderHomeSector(data) {
     return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);">
       <div style="display:flex;align-items:center;gap:10px;">
         <div style="width:24px;height:24px;background:var(--surface2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--fg3);">${i+1}</div>
-        <span class="stock-link" onclick="openStockDetail('${s.code}','${s.name}')" style="font-size:14px;font-weight:600;">${s.name}</span>
+        <span class="stock-link" onclick="openSectorDetail('${s.code}','${s.name}')" style="font-size:14px;font-weight:600;">${s.name}</span>
       </div>
       <div style="text-align:right;">
         <div style="font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;${cs}">${signStr(s.chg)}${s.chg.toFixed(2)}%</div>
@@ -3132,6 +3165,54 @@ function renderHomeSector(data) {
     </div>`;
   }).join('');
 }
+
+// 업종 클릭 → 대표 종목 목록 표시 오버레이
+window.openSectorDetail = async function(sectorCode, sectorName) {
+  const overlay = document.getElementById('detail-overlay');
+  const body    = document.getElementById('detail-body');
+
+  document.getElementById('dt-name').textContent  = sectorName;
+  document.getElementById('dt-code').textContent  = '업종 ' + sectorCode;
+  document.getElementById('dt-price').textContent = '';
+  document.getElementById('dt-chg').textContent   = '';
+  body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--fg3);">업종 종목 로딩 중…</div>';
+  overlay.hidden = false;
+
+  // 대표 종목 코드 목록
+  const codes = SECTOR_STOCKS[sectorCode] || [];
+  if (!codes.length) {
+    body.innerHTML = '<div style="padding:20px;color:var(--fg3);text-align:center;">대표 종목 데이터가 없습니다.</div>';
+    return;
+  }
+
+  try {
+    const res  = await fetch(`${KIS_WORKER}/quotes?codes=${codes.join(',')}`);
+    const data = await res.json();
+    if (data.error) { body.innerHTML = `<p style="color:var(--red);padding:20px;">${data.error}</p>`; return; }
+
+    const quotes = data.quotes || [];
+    body.innerHTML = `
+      <div style="padding:4px 0 12px;">
+        <div style="font-size:12px;color:var(--fg3);margin-bottom:12px;">대표 종목 현재가</div>
+        ${quotes.map(q => {
+          const cs = colorStyle(q.chg || 0);
+          const name = q.name || q.code;
+          return `<div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border);cursor:pointer;" onclick="closeDetailModal();setTimeout(()=>openStockDetail('${q.code}','${name}'),80)">
+            <div>
+              <div style="font-size:14px;font-weight:600;">${name}</div>
+              <div style="font-size:11px;color:var(--fg3);">${q.code}</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;${cs}">${(q.curr||0).toLocaleString('ko-KR')}</div>
+              <div style="font-size:12px;font-family:'JetBrains Mono',monospace;${cs}">${signStr(q.chg||0)}${(q.chg||0).toFixed(2)}%</div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+  } catch(e) {
+    body.innerHTML = `<p style="color:var(--red);padding:20px;">오류: ${e.message}</p>`;
+  }
+};
 
 // ═══════════════════════════════════════════════════════════
 // 종목 상세창
@@ -3306,6 +3387,9 @@ function buildCandleChart(bars) {
 }
 
 // ─── 모든 탭에서 종목명에 클릭 핸들러 연결 ─────────────────
+// 앱 최초 진입 시 home이 기본 탭이므로 바로 데이터 로드
+loadHomeData();
+
 // renderScreener, renderPositions 등의 종목 행에 onclick 추가를 위해
 // 각 렌더 함수에서 stock-link 클래스 사용 → 위임 처리
 document.addEventListener('click', e => {
