@@ -3101,33 +3101,37 @@ function renderHomeInvestor(data) {
   body.innerHTML = makeSection('코스피', data.kospi) + makeSection('코스닥', data.kosdaq);
 }
 
-// 업종코드 → 대표 종목 매핑 (코스피/코스닥 주요 업종 대표주)
+// 업종코드 → 대표 종목 매핑 {code, name} 형태
 const SECTOR_STOCKS = {
-  '0001':['005930','000660','005380','035720','051910'], // 종합(KOSPI): 삼성전자,SK하이닉스,현대차,카카오,LG화학
-  '0002':['005930','000660','005380','035420','051910'], // 대형주
-  '0005':['097950','003230','004370','005180','000080'], // 음식료: CJ제일제당,삼양식품,농심,OB맥주,동양
-  '0008':['051910','006400','011170','010950','096770'], // 화학: LG화학,삼성SDI,롯데케미칼,S-Oil,SK이노
-  '0009':['207940','068270','326030','105560','128940'], // 의약품: 삼성바이오,셀트리온,SK바이오팜,KB금융,한미약품
-  '0011':['005490','004020','002790','010140','024110'], // 철강금속: POSCO,현대제철,아세아,삼성중공업,기업은행
-  '0012':['042660','000150','064350','012450','267250'], // 기계: 두산에너빌리티,두산,현대두산인프라,한화에어로,HD현대중공업
-  '0013':['005930','000660','035420','066570','009150'], // 전기전자: 삼성전자,SK하이닉스,NAVER,LG전자,삼성전기
-  '0015':['005380','000270','012330','018880','064350'], // 운수장비: 현대차,기아,현대모비스,한온시스템,현대두산인프라
-  '0016':['035720','028300','069960','004170','026960'], // 유통업: 카카오,BGF리테일,현대백화점,신세계,동서
-  '0018':['000720','028260','047040','034220','294870'], // 건설: 현대건설,삼성물산,대우건설,LG디스플레이,HDC현산
-  '0021':['105560','086790','055550','316140','139130'], // 금융업: KB금융,하나금융,신한지주,우리금융,DGB금융
-  '0022':['105560','086790','055550','316140','138930'], // 은행
-  '0023':['016360','071050','030200','003690','001270'], // 증권: 삼성증권,한국금융지주,KT&G,삼양식품,부국증권
-  '0025':['035420','035720','259960','039130','137310'], // 서비스업: NAVER,카카오,크래프톤,이마트,코오롱
-  '0026':['005930','000660','005380','051910','006400'], // 제조업
-  '1001':['035900','086900','091990','263750','122870'], // 코스닥: JYP,메디톡스,카카오게임즈,펄어비스,와이지엔터
-  '1009':['196170','068760','086820','003030','048830'], // 코스닥 화학
-  '1010':['068270','196170','141080','214370','263750'], // 코스닥 제약
-  '1013':['086900','010140','214430','241560','091990'], // 코스닥 기계
-  '1014':['035900','066570','091990','263750','036570'], // 일반전기전자: JYP,LG전자,카카오게임즈,펄어비스,엔씨소프트
-  '1023':['033780','036570','263750','112040','078600'], // IT부품
-  '1024':['259960','263750','036570','251270','112040'], // 디지털컨텐츠: 크래프톤,펄어비스,엔씨소프트,넷마블
-  '1025':['035420','035720','047560','030520','053800'], // 소프트웨어: NAVER,카카오,카카오뱅크,넥슨게임즈
-  '1027':['000660','293490','240810','088980','054620'], // 통신장비: SK하이닉스,케이엔에스,원익IPS
+  '0001':[{c:'005930',n:'삼성전자'},{c:'000660',n:'SK하이닉스'},{c:'005380',n:'현대차'},{c:'035720',n:'카카오'},{c:'051910',n:'LG화학'}],
+  '0002':[{c:'005930',n:'삼성전자'},{c:'000660',n:'SK하이닉스'},{c:'005380',n:'현대차'},{c:'035420',n:'NAVER'},{c:'051910',n:'LG화학'}],
+  '0005':[{c:'097950',n:'CJ제일제당'},{c:'003230',n:'삼양식품'},{c:'004370',n:'농심'},{c:'005180',n:'빙그레'},{c:'000080',n:'하이트진로'}],
+  '0008':[{c:'051910',n:'LG화학'},{c:'006400',n:'삼성SDI'},{c:'011170',n:'롯데케미칼'},{c:'010950',n:'S-Oil'},{c:'096770',n:'SK이노베이션'}],
+  '0009':[{c:'207940',n:'삼성바이오로직스'},{c:'068270',n:'셀트리온'},{c:'326030',n:'SK바이오팜'},{c:'128940',n:'한미약품'},{c:'185750',n:'종근당'}],
+  '0011':[{c:'005490',n:'POSCO홀딩스'},{c:'004020',n:'현대제철'},{c:'002790',n:'아세아'},{c:'010140',n:'삼성중공업'},{c:'024110',n:'기업은행'}],
+  '0012':[{c:'042660',n:'한화오션'},{c:'000150',n:'두산'},{c:'064350',n:'현대로템'},{c:'012450',n:'한화에어로스페이스'},{c:'267250',n:'HD현대중공업'}],
+  '0013':[{c:'005930',n:'삼성전자'},{c:'000660',n:'SK하이닉스'},{c:'035420',n:'NAVER'},{c:'066570',n:'LG전자'},{c:'009150',n:'삼성전기'}],
+  '0014':[{c:'000720',n:'현대건설'},{c:'035720',n:'카카오'},{c:'066570',n:'LG전자'},{c:'009150',n:'삼성전기'},{c:'042700',n:'한미반도체'}],
+  '0015':[{c:'005380',n:'현대차'},{c:'000270',n:'기아'},{c:'012330',n:'현대모비스'},{c:'018880',n:'한온시스템'},{c:'064350',n:'현대로템'}],
+  '0016':[{c:'035720',n:'카카오'},{c:'028300',n:'BGF리테일'},{c:'069960',n:'현대백화점'},{c:'004170',n:'신세계'},{c:'026960',n:'동서'}],
+  '0018':[{c:'000720',n:'현대건설'},{c:'028260',n:'삼성물산'},{c:'047040',n:'대우건설'},{c:'034220',n:'LG디스플레이'},{c:'294870',n:'HDC현대산업개발'}],
+  '0019':[{c:'011200',n:'HMM'},{c:'086280',n:'현대글로비스'},{c:'000120',n:'CJ대한통운'},{c:'002820',n:'SH에너지화학'},{c:'003490',n:'대한항공'}],
+  '0021':[{c:'105560',n:'KB금융'},{c:'086790',n:'하나금융지주'},{c:'055550',n:'신한지주'},{c:'316140',n:'우리금융지주'},{c:'139130',n:'DGB금융지주'}],
+  '0022':[{c:'105560',n:'KB금융'},{c:'086790',n:'하나금융지주'},{c:'055550',n:'신한지주'},{c:'316140',n:'우리금융지주'},{c:'138930',n:'BNK금융지주'}],
+  '0023':[{c:'016360',n:'삼성증권'},{c:'071050',n:'한국금융지주'},{c:'030200',n:'KT'},{c:'078020',n:'이베스트투자증권'},{c:'001270',n:'부국증권'}],
+  '0024':[{c:'032830',n:'삼성생명'},{c:'082640',n:'동양생명'},{c:'000810',n:'삼성화재'},{c:'001450',n:'현대해상'},{c:'000060',n:'메리츠화재'}],
+  '0025':[{c:'035420',n:'NAVER'},{c:'035720',n:'카카오'},{c:'259960',n:'크래프톤'},{c:'039130',n:'하나투어'},{c:'137310',n:'코오롱인더'}],
+  '0026':[{c:'005930',n:'삼성전자'},{c:'000660',n:'SK하이닉스'},{c:'005380',n:'현대차'},{c:'051910',n:'LG화학'},{c:'006400',n:'삼성SDI'}],
+  '1001':[{c:'035900',n:'JYP Ent.'},{c:'086900',n:'메디톡스'},{c:'091990',n:'셀트리온헬스케어'},{c:'263750',n:'펄어비스'},{c:'122870',n:'와이지엔터테인먼트'}],
+  '1009':[{c:'196170',n:'알테오젠'},{c:'068760',n:'셀트리온제약'},{c:'086820',n:'바이넥스'},{c:'003030',n:'세아제강지주'},{c:'048830',n:'에이치엘비'}],
+  '1010':[{c:'068270',n:'셀트리온'},{c:'196170',n:'알테오젠'},{c:'141080',n:'레고켐바이오'},{c:'214370',n:'케어젠'},{c:'263750',n:'펄어비스'}],
+  '1013':[{c:'086900',n:'메디톡스'},{c:'010140',n:'삼성중공업'},{c:'214430',n:'아이에스동서'},{c:'241560',n:'두산밥캣'},{c:'091990',n:'셀트리온헬스케어'}],
+  '1014':[{c:'035900',n:'JYP Ent.'},{c:'066570',n:'LG전자'},{c:'091990',n:'셀트리온헬스케어'},{c:'263750',n:'펄어비스'},{c:'036570',n:'엔씨소프트'}],
+  '1021':[{c:'035420',n:'NAVER'},{c:'035720',n:'카카오'},{c:'036570',n:'엔씨소프트'},{c:'251270',n:'넷마블'},{c:'112040',n:'위메이드'}],
+  '1023':[{c:'033780',n:'KT&G'},{c:'036570',n:'엔씨소프트'},{c:'263750',n:'펄어비스'},{c:'112040',n:'위메이드'},{c:'078600',n:'대주전자재료'}],
+  '1024':[{c:'259960',n:'크래프톤'},{c:'263750',n:'펄어비스'},{c:'036570',n:'엔씨소프트'},{c:'251270',n:'넷마블'},{c:'112040',n:'위메이드'}],
+  '1025':[{c:'035420',n:'NAVER'},{c:'035720',n:'카카오'},{c:'047560',n:'카카오뱅크'},{c:'030520',n:'넥슨게임즈'},{c:'053800',n:'안랩'}],
+  '1027':[{c:'000660',n:'SK하이닉스'},{c:'293490',n:'카카오페이'},{c:'240810',n:'원익IPS'},{c:'088980',n:'맥쿼리인프라'},{c:'054620',n:'APS홀딩스'}],
 };
 
 function renderHomeSector(data) {
@@ -3178,39 +3182,59 @@ window.openSectorDetail = async function(sectorCode, sectorName) {
   body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--fg3);">업종 종목 로딩 중…</div>';
   overlay.hidden = false;
 
-  // 대표 종목 코드 목록
-  const codes = SECTOR_STOCKS[sectorCode] || [];
-  if (!codes.length) {
+  // 대표 종목 목록 ({c:코드, n:종목명} 구조)
+  const stockList = SECTOR_STOCKS[sectorCode] || [];
+  if (!stockList.length) {
     body.innerHTML = '<div style="padding:20px;color:var(--fg3);text-align:center;">대표 종목 데이터가 없습니다.</div>';
     return;
   }
 
+  // 코드→종목명 맵 (API 실패시 폴백용)
+  const nameMap = {};
+  stockList.forEach(s => { nameMap[s.c] = s.n; });
+  const codeStr = stockList.map(s => s.c).join(',');
+
   try {
-    const res  = await fetch(`${KIS_WORKER}/quotes?codes=${codes.join(',')}`);
+    const res  = await fetch(`${KIS_WORKER}/quotes?codes=${codeStr}`);
     const data = await res.json();
     if (data.error) { body.innerHTML = `<p style="color:var(--red);padding:20px;">${data.error}</p>`; return; }
 
     const quotes = data.quotes || [];
+    // API 응답이 없는 종목은 하드코딩 데이터로 채움
+    const rendered = stockList.map(s => {
+      const q = quotes.find(x => x.code === s.c) || { code: s.c, curr: 0, chg: 0 };
+      const displayName = q.name || nameMap[s.c] || s.c;
+      const cs = colorStyle(q.chg || 0);
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border);cursor:pointer;" onclick="closeDetailModal();setTimeout(()=>openStockDetail('${s.c}','${displayName}'),80)">
+        <div>
+          <div style="font-size:14px;font-weight:600;">${displayName}</div>
+          <div style="font-size:11px;color:var(--fg3);">${s.c}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;${cs}">${q.curr ? (q.curr).toLocaleString('ko-KR') : '-'}</div>
+          <div style="font-size:12px;font-family:'JetBrains Mono',monospace;${cs}">${q.chg ? signStr(q.chg)+(q.chg).toFixed(2)+'%' : '-'}</div>
+        </div>
+      </div>`;
+    });
+
     body.innerHTML = `
       <div style="padding:4px 0 12px;">
         <div style="font-size:12px;color:var(--fg3);margin-bottom:12px;">대표 종목 현재가</div>
-        ${quotes.map(q => {
-          const cs = colorStyle(q.chg || 0);
-          const name = q.name || q.code;
-          return `<div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border);cursor:pointer;" onclick="closeDetailModal();setTimeout(()=>openStockDetail('${q.code}','${name}'),80)">
-            <div>
-              <div style="font-size:14px;font-weight:600;">${name}</div>
-              <div style="font-size:11px;color:var(--fg3);">${q.code}</div>
-            </div>
-            <div style="text-align:right;">
-              <div style="font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;${cs}">${(q.curr||0).toLocaleString('ko-KR')}</div>
-              <div style="font-size:12px;font-family:'JetBrains Mono',monospace;${cs}">${signStr(q.chg||0)}${(q.chg||0).toFixed(2)}%</div>
-            </div>
-          </div>`;
-        }).join('')}
+        ${rendered.join('')}
       </div>`;
   } catch(e) {
-    body.innerHTML = `<p style="color:var(--red);padding:20px;">오류: ${e.message}</p>`;
+    // API 실패해도 종목명은 하드코딩에서 표시
+    body.innerHTML = `
+      <div style="padding:4px 0 12px;">
+        <div style="font-size:12px;color:var(--red);margin-bottom:12px;">시세 로딩 실패 — 종목 목록만 표시</div>
+        ${stockList.map(s => `<div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border);cursor:pointer;" onclick="closeDetailModal();setTimeout(()=>openStockDetail('${s.c}','${s.n}'),80)">
+          <div>
+            <div style="font-size:14px;font-weight:600;">${s.n}</div>
+            <div style="font-size:11px;color:var(--fg3);">${s.c}</div>
+          </div>
+          <div style="font-size:14px;color:var(--fg3);">-</div>
+        </div>`).join('')}
+      </div>`;
   }
 };
 
