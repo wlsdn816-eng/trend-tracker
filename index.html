@@ -784,6 +784,25 @@
     <div class="tab-panel active" id="panel-home">
       <div style="padding: 8px 0 60px;">
 
+        <!-- 장세 배너 -->
+        <div id="market-regime-banner" style="
+          display:flex; align-items:center; justify-content:space-between;
+          padding: 10px 14px; border-radius: 10px; margin-bottom: 10px;
+          background: var(--surface2); border: 1px solid var(--border);
+          font-size: 13px; transition: background 0.3s;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span id="regime-icon" style="font-size:18px;">⏳</span>
+            <div>
+              <div style="font-weight:700;color:var(--fg);" id="regime-label">장세 확인 중…</div>
+              <div style="font-size:11px;color:var(--fg3);margin-top:1px;" id="regime-detail"></div>
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:11px;color:var(--fg3);">KOSPI 60MA</div>
+            <div style="font-weight:600;color:var(--fg2);" id="regime-ma60">-</div>
+          </div>
+        </div>
+
         <!-- 지수 카드 -->
         <div class="index-card" id="home-index-card">
           <div style="font-size:12px;font-weight:700;color:var(--fg3);margin-bottom:8px;letter-spacing:.04em;">시장 지수</div>
@@ -2989,16 +3008,20 @@ async function loadHomeData(force) {
   if (sectorGrid) sectorGrid.innerHTML = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;grid-column:1/-1;">로딩 중…</div>';
   if (leaderEl)   leaderEl.innerHTML   = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;">로딩 중…</div>';
 
-  // 동시 3개 요청
-  const [idxRes, invRes, secRes] = await Promise.allSettled([
+  // 동시 4개 요청 (장세 배너 포함)
+  const [idxRes, invRes, secRes, maRes] = await Promise.allSettled([
     fetch(`${KIS_WORKER}/market-index`).then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }),
     fetch(`${KIS_WORKER}/market-investor`).then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }),
     fetch(`${KIS_WORKER}/market-sector`).then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }),
+    fetch(`${KIS_WORKER}/kospi-ma`).then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }),
   ]);
 
   const idx = idxRes.status === 'fulfilled' ? idxRes.value : null;
   const inv = invRes.status === 'fulfilled' ? invRes.value : null;
   const sec = secRes.status === 'fulfilled' ? secRes.value : null;
+  const ma  = maRes.status  === 'fulfilled' ? maRes.value  : null;
+
+  renderMarketBanner(ma);
 
   if (idx) {
     renderHomeIndex(idx);
@@ -3041,6 +3064,42 @@ function fmtAmt(n) {
   if (abs >= 1e4) return sign + (abs/1e4).toFixed(0) + '조';
   if (abs >= 1)   return sign + abs.toFixed(0) + '억';
   return sign + abs + '';
+}
+
+function renderMarketBanner(data) {
+  const banner = document.getElementById('market-regime-banner');
+  const icon   = document.getElementById('regime-icon');
+  const label  = document.getElementById('regime-label');
+  const detail = document.getElementById('regime-detail');
+  const ma60el = document.getElementById('regime-ma60');
+  if (!banner) return;
+
+  if (!data) {
+    icon.textContent  = '❓';
+    label.textContent = '장세 데이터 없음';
+    detail.textContent = '';
+    return;
+  }
+
+  const bull = data.isBullish;
+  const curr = data.curr ? data.curr.toLocaleString('ko-KR', { maximumFractionDigits: 2 }) : '-';
+  const ma   = data.ma60  ? data.ma60.toLocaleString('ko-KR',  { maximumFractionDigits: 2 }) : '-';
+  const diff = (data.curr && data.ma60) ? ((data.curr - data.ma60) / data.ma60 * 100).toFixed(2) : null;
+
+  icon.textContent  = bull ? '🟢' : '🔴';
+  label.textContent = bull ? '강세장 — 코스피 60MA 위' : '약세장 — 코스피 60MA 아래';
+  detail.textContent = diff != null
+    ? `현재 ${curr} · 60MA 대비 ${diff > 0 ? '+' : ''}${diff}%`
+    : `현재 ${curr}`;
+  ma60el.textContent = ma;
+
+  // 배너 배경색 변경
+  banner.style.background = bull
+    ? 'rgba(22,163,74,0.08)'   // 초록빛
+    : 'rgba(220,38,38,0.08)';  // 빨간빛
+  banner.style.borderColor = bull
+    ? 'rgba(22,163,74,0.3)'
+    : 'rgba(220,38,38,0.3)';
 }
 
 function renderHomeIndex(data) {
