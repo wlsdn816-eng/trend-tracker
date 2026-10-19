@@ -2180,23 +2180,28 @@ function updateFetchedAtLabel() {
   const el = document.getElementById('fetched-at-label');
   if (!el) return;
   if (!lastFetchedAt) { el.textContent = ''; return; }
-  // "2026-10-19" → 날짜 파싱
+
+  // fetchedAt: "2026-10-19", fetchedTime: "10:04" (KST, Worker에서 제공)
   const [y, m, d] = lastFetchedAt.split('-');
-  const label = `${y}년 ${parseInt(m)}월 ${parseInt(d)}일`;
 
-  // 현재 KST 시간 기준으로 라벨 보정
-  // 오늘 날짜인데 16:00 이전이면 아직 종가 확정 전 → "전일 종가 기준"으로 안내
-  const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000); // UTC+9
-  const todayKST = nowKST.toISOString().slice(0, 10); // YYYY-MM-DD
-  const kstHour = nowKST.getUTCHours(); // KST 시간 (UTC+9 적용 후의 UTC 시간)
-
-  if (lastFetchedAt === todayKST && kstHour < 16) {
-    // 오늘 날짜 데이터인데 오후 4시 전 → 실제로는 어제/전 거래일 장 마감 후 저장된 것
-    el.textContent = `${label} 종가기준 (장 마감 전)`;
-    el.style.color = 'var(--orange)';
-  } else {
-    el.textContent = `${label} 종가기준`;
+  if (lastFetchedTime) {
+    // Worker가 fetchedTime(HH:MM)을 줬으면 → "2026년 10월 19일 10시 04분 기준"
+    const [hh, mm] = lastFetchedTime.split(':');
+    el.textContent = `${y}년 ${parseInt(m)}월 ${parseInt(d)}일 ${parseInt(hh)}시 ${mm}분 기준`;
     el.style.color = '';
+  } else {
+    // fallback: 날짜만 + 장 마감 전 여부
+    const label = `${y}년 ${parseInt(m)}월 ${parseInt(d)}일`;
+    const nowKST  = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const todayKST = nowKST.toISOString().slice(0, 10);
+    const kstHour  = nowKST.getUTCHours();
+    if (lastFetchedAt === todayKST && kstHour < 16) {
+      el.textContent = `${label} 기준 (장 마감 전)`;
+      el.style.color = 'var(--orange)';
+    } else {
+      el.textContent = `${label} 종가기준`;
+      el.style.color = '';
+    }
   }
 }
 
