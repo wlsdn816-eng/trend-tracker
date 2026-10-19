@@ -641,6 +641,131 @@
 
   input[type=number]::-webkit-inner-spin-button,
   input[type=number]::-webkit-outer-spin-button { opacity: 0.5; }
+
+  /* ─── HOME 탭 ─────────────────────────────────────────────── */
+  .index-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .index-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .index-row:last-child { border-bottom: none; }
+  .index-name { font-size: 15px; font-weight: 700; }
+  .index-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .index-chg {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .investor-bar {
+    display: flex;
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 8px 0 4px;
+  }
+  .sector-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .sector-tile {
+    background: var(--surface2);
+    border-radius: 10px;
+    padding: 10px 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .sector-tile:active { background: var(--border); }
+  .sector-tile-name { font-size: 11px; color: var(--fg2); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sector-tile-chg { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 700; }
+
+  /* ─── 종목 상세창 (슬라이드업) ───────────────────────────── */
+  #detail-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 300;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  #detail-sheet {
+    background: var(--surface);
+    border-radius: 20px 20px 0 0;
+    width: 100%;
+    max-width: 480px;
+    height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #detail-header {
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #detail-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+  }
+  .chart-canvas-wrap {
+    width: 100%;
+    overflow-x: auto;
+    margin-bottom: 12px;
+  }
+  .ohlcv-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .ohlcv-table th, .ohlcv-table td {
+    padding: 6px 8px;
+    text-align: right;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .ohlcv-table th { font-size: 11px; color: var(--fg3); font-weight: 600; }
+  .ohlcv-table td:first-child, .ohlcv-table th:first-child { text-align: left; }
+  .investor-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .investor-table th, .investor-table td {
+    padding: 6px 6px;
+    text-align: right;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .investor-table th { font-size: 11px; color: var(--fg3); font-weight: 600; }
+  .investor-table td:first-child, .investor-table th:first-child { text-align: left; }
+
+  /* 종목명 클릭 가능 링크 스타일 */
+  .stock-link {
+    cursor: pointer;
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px dashed var(--fg3);
+    display: inline;
+  }
+  .stock-link:hover { color: var(--accent); border-bottom-color: var(--accent); }
 </style>
 
 <div id="app">
@@ -654,6 +779,66 @@
 
   <!-- Main Content -->
   <main class="main-content">
+
+    <!-- ══ HOME 탭 ═════════════════════════════════════════════ -->
+    <div class="tab-panel" id="panel-home">
+      <div style="padding: 8px 0 60px;">
+
+        <!-- 지수 카드 -->
+        <div class="index-card" id="home-index-card">
+          <div style="font-size:12px;font-weight:700;color:var(--fg3);margin-bottom:8px;letter-spacing:.04em;">시장 지수</div>
+          <div class="index-row">
+            <div>
+              <div class="index-name">KOSPI</div>
+              <div style="font-size:11px;color:var(--fg3);margin-top:2px;" id="home-kospi-vol">거래량 -</div>
+            </div>
+            <div style="text-align:right;">
+              <div class="index-val" id="home-kospi-val">-</div>
+              <div class="index-chg" id="home-kospi-chg" style="color:var(--fg3);">-</div>
+            </div>
+          </div>
+          <div class="index-row">
+            <div>
+              <div class="index-name">KOSDAQ</div>
+              <div style="font-size:11px;color:var(--fg3);margin-top:2px;" id="home-kosdaq-vol">거래량 -</div>
+            </div>
+            <div style="text-align:right;">
+              <div class="index-val" id="home-kosdaq-val">-</div>
+              <div class="index-chg" id="home-kosdaq-chg" style="color:var(--fg3);">-</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 투자자 수급 -->
+        <div class="index-card" id="home-investor-card">
+          <div style="font-size:12px;font-weight:700;color:var(--fg3);margin-bottom:10px;letter-spacing:.04em;">오늘의 시장 수급</div>
+          <div id="home-investor-body">
+            <div style="color:var(--fg3);font-size:13px;text-align:center;padding:20px 0;">데이터 로딩 중…</div>
+          </div>
+        </div>
+
+        <!-- 업종 그리드 -->
+        <div class="index-card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <div style="font-size:12px;font-weight:700;color:var(--fg3);letter-spacing:.04em;">오늘의 업종</div>
+            <div style="font-size:11px;color:var(--fg3);" id="home-sector-time"></div>
+          </div>
+          <div class="sector-grid" id="home-sector-grid">
+            <div style="color:var(--fg3);font-size:13px;text-align:center;padding:20px 0;grid-column:1/-1;">데이터 로딩 중…</div>
+          </div>
+        </div>
+
+        <!-- 주도주 (상위 종목) -->
+        <div class="index-card">
+          <div style="font-size:12px;font-weight:700;color:var(--fg3);margin-bottom:10px;letter-spacing:.04em;">오늘의 주도주</div>
+          <div id="home-leader-list">
+            <div style="color:var(--fg3);font-size:13px;text-align:center;padding:20px 0;">데이터 로딩 중…</div>
+          </div>
+        </div>
+
+        <div style="font-size:11px;color:var(--fg3);text-align:center;padding:8px 0;" id="home-update-time">-</div>
+      </div>
+    </div>
 
     <!-- ══ 스크리너 탭 ══════════════════════════════════════════ -->
     <div class="tab-panel active" id="panel-screener">
@@ -944,6 +1129,10 @@
 
   <!-- Bottom Tab Navigation -->
   <nav class="tab-nav">
+    <button class="tab-btn" data-tab="home">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      홈
+    </button>
     <button class="tab-btn active" data-tab="screener">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
       스크리너
@@ -969,6 +1158,33 @@
     <div class="modal-handle"></div>
     <div class="modal-title" id="modal-title">추가</div>
     <div id="modal-body"></div>
+  </div>
+</div>
+
+<!-- ══ 종목 상세 모달 ════════════════════════════════════════ -->
+<div id="detail-overlay" hidden>
+  <div id="detail-sheet">
+    <div id="detail-header">
+      <div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px;"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div id="dt-name" style="font-size:18px;font-weight:800;"></div>
+          <div id="dt-code" style="font-size:12px;color:var(--fg3);margin-top:2px;"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="text-align:right;">
+            <div id="dt-price" style="font-size:20px;font-weight:800;font-family:'JetBrains Mono',monospace;"></div>
+            <div id="dt-chg" style="font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace;"></div>
+          </div>
+          <button onclick="closeDetailModal()" style="background:none;border:none;color:var(--fg3);cursor:pointer;padding:4px;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div id="detail-body">
+      <div id="dt-loading" style="text-align:center;padding:40px;color:var(--fg3);">데이터 로딩 중…</div>
+    </div>
   </div>
 </div>
 
@@ -1095,6 +1311,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('panel-' + tab).classList.add('active');
+    if (tab === 'home') loadHomeData();
   });
 });
 
@@ -1173,8 +1390,8 @@ function renderScreener() {
     return `<div class="card">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px;">
         <div>
-          <span class="card-title">${s.ticker}</span>
-          <span style="font-size:12px;color:var(--fg3);margin-left:6px;">${s.name || ''}</span>
+          <span class="stock-link card-title" data-stock-code="${s.ticker}" data-stock-name="${s.name||s.ticker}">${s.ticker}</span>
+          <span class="stock-link" data-stock-code="${s.ticker}" data-stock-name="${s.name||s.ticker}" style="font-size:12px;color:var(--fg3);margin-left:6px;">${s.name || ''}</span>
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
           <span class="badge ${badgeClass}">${badgeText}</span>
@@ -1656,8 +1873,8 @@ function renderPositions() {
     return `<div class="card">
       <div class="pos-header">
         <div>
-          <div class="pos-ticker">${p.ticker}</div>
-          <div class="pos-name">${p.name || ''} · ${p.qty}주 · 진입 ${p.date}</div>
+          <div class="pos-ticker stock-link" data-stock-code="${p.ticker}" data-stock-name="${p.name||p.ticker}">${p.ticker}</div>
+          <div class="pos-name"><span class="stock-link" data-stock-code="${p.ticker}" data-stock-name="${p.name||p.ticker}">${p.name || ''}</span> · ${p.qty}주 · 진입 ${p.date}</div>
         </div>
         <div class="pos-actions">
           ${trailSignal ? '<span class="badge badge-red" style="font-size:10px;">청산 신호</span>' : '<span class="badge badge-green" style="font-size:10px;">홀딩</span>'}
@@ -2509,7 +2726,7 @@ function renderFavorites() {
       <div style="display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="toggleFavDetail(${i})">
         <div style="flex:1;min-width:0;">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span style="font-weight:700;font-size:14px;">${f.name}</span>
+            <span class="stock-link" data-stock-code="${f.code}" data-stock-name="${f.name}" style="font-weight:700;font-size:14px;">${f.name}</span>
             <span style="font-size:12px;color:var(--fg3);">${f.code}</span>
             <span style="background:${badgeColor}22;color:${badgeColor};border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;">${badgeText}</span>
           </div>
@@ -2721,4 +2938,298 @@ renderPositions();
 renderHoldings();
 renderJournalList();
 renderFavorites();
+
+// ═══════════════════════════════════════════════════════════
+// HOME 탭 – 시장 지수·수급·업종
+// ═══════════════════════════════════════════════════════════
+let homeLoaded = false;
+
+async function loadHomeData(force) {
+  if (homeLoaded && !force) return;
+  homeLoaded = true;
+
+  // 동시 3개 요청
+  const [idxRes, invRes, secRes] = await Promise.allSettled([
+    fetch(`${KIS_WORKER}/market-index`).then(r => r.json()),
+    fetch(`${KIS_WORKER}/market-investor`).then(r => r.json()),
+    fetch(`${KIS_WORKER}/market-sector`).then(r => r.json()),
+  ]);
+
+  const idx = idxRes.status === 'fulfilled' ? idxRes.value : null;
+  const inv = invRes.status === 'fulfilled' ? invRes.value : null;
+  const sec = secRes.status === 'fulfilled' ? secRes.value : null;
+
+  if (idx) renderHomeIndex(idx);
+  if (inv) renderHomeInvestor(inv);
+  if (sec) renderHomeSector(sec);
+
+  document.getElementById('home-update-time').textContent =
+    '업데이트: ' + new Date().toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit' });
+}
+
+function colorStyle(v) {
+  if (v > 0) return 'color:var(--red)';
+  if (v < 0) return 'color:var(--accent)';
+  return 'color:var(--fg3)';
+}
+function signStr(v) { return v > 0 ? '+' : ''; }
+function fmtNum(n) { return n == null ? '-' : Math.round(n).toLocaleString('ko-KR'); }
+function fmtVol(n) {
+  if (!n) return '-';
+  if (n >= 1e8) return (n/1e8).toFixed(1) + '억주';
+  if (n >= 1e4) return (n/1e4).toFixed(0) + '만주';
+  return n.toLocaleString('ko-KR') + '주';
+}
+function fmtAmt(n) {
+  // 억원 단위
+  const abs = Math.abs(n || 0);
+  const sign = n < 0 ? '-' : '+';
+  if (abs >= 1e4) return sign + (abs/1e4).toFixed(0) + '조';
+  if (abs >= 1)   return sign + abs.toFixed(0) + '억';
+  return sign + abs + '';
+}
+
+function renderHomeIndex(data) {
+  function setIdx(prefix, d) {
+    if (!d) return;
+    const el = v => document.getElementById(prefix + '-' + v);
+    el('val').textContent = fmtNum(d.curr);
+    el('val').style = colorStyle(d.chg);
+    el('chg').textContent = `${signStr(d.chg)}${d.chg.toFixed(2)}% (${signStr(d.chgAmt)}${fmtNum(d.chgAmt)})`;
+    el('chg').style = colorStyle(d.chg);
+    el('vol').textContent = '거래량 ' + fmtVol(d.vol);
+  }
+  setIdx('home-kospi',  data.kospi);
+  setIdx('home-kosdaq', data.kosdaq);
+}
+
+function renderHomeInvestor(data) {
+  const body = document.getElementById('home-investor-body');
+  function makeSection(label, d) {
+    if (!d) return '';
+    const total = Math.abs(d.foreignAmt) + Math.abs(d.instAmt) + Math.abs(d.indivAmt);
+    const pct = v => total ? (Math.abs(v) / total * 100).toFixed(0) : 33;
+    const fColor = d.foreignAmt >= 0 ? 'var(--red)' : 'var(--accent)';
+    const iColor = d.instAmt    >= 0 ? 'var(--red)' : 'var(--accent)';
+    const pColor = d.indivAmt   >= 0 ? 'var(--red)' : 'var(--accent)';
+    return `
+      <div style="margin-bottom:14px;">
+        <div style="font-size:12px;font-weight:700;color:var(--fg3);margin-bottom:6px;">${label}</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px;">
+          <div style="background:var(--surface2);border-radius:10px;padding:10px 8px;text-align:center;">
+            <div style="font-size:11px;color:var(--fg3);margin-bottom:4px;">외국인</div>
+            <div style="font-size:14px;font-weight:700;${colorStyle(d.foreignAmt)}">${fmtAmt(d.foreignAmt)}억</div>
+          </div>
+          <div style="background:var(--surface2);border-radius:10px;padding:10px 8px;text-align:center;">
+            <div style="font-size:11px;color:var(--fg3);margin-bottom:4px;">기관</div>
+            <div style="font-size:14px;font-weight:700;${colorStyle(d.instAmt)}">${fmtAmt(d.instAmt)}억</div>
+          </div>
+          <div style="background:var(--surface2);border-radius:10px;padding:10px 8px;text-align:center;">
+            <div style="font-size:11px;color:var(--fg3);margin-bottom:4px;">개인</div>
+            <div style="font-size:14px;font-weight:700;${colorStyle(d.indivAmt)}">${fmtAmt(d.indivAmt)}억</div>
+          </div>
+        </div>
+        <div class="investor-bar">
+          <div style="flex:${pct(d.foreignAmt)};background:${fColor};opacity:0.7;transition:flex 0.4s;"></div>
+          <div style="flex:${pct(d.instAmt)};background:${iColor};opacity:0.55;transition:flex 0.4s;"></div>
+          <div style="flex:${pct(d.indivAmt)};background:${pColor};opacity:0.4;transition:flex 0.4s;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--fg3);">
+          <span style="${colorStyle(d.foreignAmt)}">외국인</span>
+          <span style="${colorStyle(d.instAmt)}">기관</span>
+          <span style="${colorStyle(d.indivAmt)}">개인</span>
+        </div>
+      </div>`;
+  }
+  body.innerHTML = makeSection('코스피', data.kospi) + makeSection('코스닥', data.kosdaq);
+}
+
+function renderHomeSector(data) {
+  const grid = document.getElementById('home-sector-grid');
+  if (!data.sectors || !data.sectors.length) {
+    grid.innerHTML = '<div style="color:var(--fg3);font-size:13px;text-align:center;padding:20px 0;grid-column:1/-1;">데이터 없음</div>';
+    return;
+  }
+  grid.innerHTML = data.sectors.map(s => {
+    const cs = colorStyle(s.chg);
+    return `<div class="sector-tile" onclick="openStockDetail('${s.code}','${s.name}')">
+      <div class="sector-tile-name">${s.name}</div>
+      <div class="sector-tile-chg" style="${cs}">${signStr(s.chg)}${s.chg.toFixed(2)}%</div>
+    </div>`;
+  }).join('');
+
+  // 주도주: chg 상위 5개 종목
+  const leaders = [...data.sectors].sort((a,b) => b.chg - a.chg).slice(0, 5);
+  const leaderEl = document.getElementById('home-leader-list');
+  leaderEl.innerHTML = leaders.map((s, i) => {
+    const cs = colorStyle(s.chg);
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:24px;height:24px;background:var(--surface2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--fg3);">${i+1}</div>
+        <span class="stock-link" onclick="openStockDetail('${s.code}','${s.name}')" style="font-size:14px;font-weight:600;">${s.name}</span>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;${cs}">${signStr(s.chg)}${s.chg.toFixed(2)}%</div>
+        <div style="font-size:11px;color:var(--fg3);">거래량 ${fmtVol(s.vol)}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+// 종목 상세창
+// ═══════════════════════════════════════════════════════════
+window.openStockDetail = async function(code, name) {
+  if (!code) return;
+  const overlay = document.getElementById('detail-overlay');
+  const body    = document.getElementById('detail-body');
+  const loading = document.getElementById('dt-loading');
+
+  document.getElementById('dt-name').textContent  = name || code;
+  document.getElementById('dt-code').textContent  = code;
+  document.getElementById('dt-price').textContent = '-';
+  document.getElementById('dt-chg').textContent   = '-';
+  body.innerHTML = '<div id="dt-loading" style="text-align:center;padding:40px;color:var(--fg3);">데이터 로딩 중…</div>';
+  overlay.hidden = false;
+
+  try {
+    const res  = await fetch(`${KIS_WORKER}/stock-detail?code=${code}`);
+    const data = await res.json();
+    if (data.error) { body.innerHTML = `<p style="color:var(--red);padding:20px;">${data.error}</p>`; return; }
+    renderDetailModal(data);
+  } catch(e) {
+    body.innerHTML = `<p style="color:var(--red);padding:20px;">오류: ${e.message}</p>`;
+  }
+};
+
+window.closeDetailModal = function() {
+  document.getElementById('detail-overlay').hidden = true;
+};
+document.getElementById('detail-overlay').addEventListener('click', function(e) {
+  if (e.target === this) closeDetailModal();
+});
+
+function renderDetailModal(data) {
+  const { info, bars, investor } = data;
+  const body = document.getElementById('detail-body');
+
+  // 헤더 가격 정보
+  if (info) {
+    const pr = parseFloat(info.stck_prpr) || 0;
+    const chg = parseFloat(info.prdy_ctrt) || 0;
+    const chgAmt = parseFloat(info.prdy_vrss) || 0;
+    document.getElementById('dt-price').textContent = pr.toLocaleString('ko-KR');
+    document.getElementById('dt-price').style = colorStyle(chg);
+    document.getElementById('dt-chg').textContent = `${signStr(chg)}${chg.toFixed(2)}% (${signStr(chgAmt)}${fmtNum(chgAmt)})`;
+    document.getElementById('dt-chg').style = colorStyle(chg);
+  }
+
+  // 본문 구성
+  let html = '';
+
+  // 1) 캔들차트 (bars)
+  if (bars && bars.length > 0) {
+    html += `<div style="margin-bottom:16px;">
+      <div style="font-size:12px;font-weight:700;color:var(--fg3);margin-bottom:8px;">일봉 차트 (최근 60일)</div>
+      <div class="chart-canvas-wrap">${buildCandleChart(bars)}</div>
+    </div>`;
+  }
+
+  // 2) 당일 OHLCV
+  if (bars && bars.length > 0) {
+    const today = bars[bars.length - 1];
+    html += `<div style="margin-bottom:16px;">
+      <div style="font-size:12px;font-weight:700;color:var(--fg3);margin-bottom:8px;">당일 시세</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+        ${[['시가', today.open],['고가', today.high],['저가', today.low],['종가', today.close],['거래량', today.vol],['거래대금(억)', Math.round((today.amt||0)/1e8)]].map(([l,v]) =>
+          `<div style="background:var(--surface2);border-radius:10px;padding:10px 8px;text-align:center;">
+            <div style="font-size:11px;color:var(--fg3);margin-bottom:4px;">${l}</div>
+            <div style="font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;">${typeof v === 'number' ? v.toLocaleString('ko-KR') : v}</div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  // 3) 투자자별 매매동향
+  if (investor && investor.length > 0) {
+    html += `<div style="margin-bottom:16px;">
+      <div style="font-size:12px;font-weight:700;color:var(--fg3);margin-bottom:8px;">투자자별 매매동향 (최근 20일)</div>
+      <div style="overflow-x:auto;">
+        <table class="investor-table">
+          <thead><tr>
+            <th>날짜</th><th>외국인</th><th>기관</th><th>개인</th>
+          </tr></thead>
+          <tbody>
+            ${investor.slice(0,20).map(r => {
+              const d = r.date || r.stck_bsop_date || '';
+              const fdate = d.length === 8 ? `${d.slice(4,6)}/${d.slice(6,8)}` : d;
+              const frgn = r.foreign ?? parseInt(r.frgn_ntby_qty || 0);
+              const inst = r.inst   ?? parseInt(r.orgn_ntby_qty || 0);
+              const indv = r.indiv  ?? parseInt(r.indv_ntby_qty || 0);
+              return `<tr>
+                <td>${fdate}</td>
+                <td style="${colorStyle(frgn)}">${frgn.toLocaleString('ko-KR')}</td>
+                <td style="${colorStyle(inst)}">${inst.toLocaleString('ko-KR')}</td>
+                <td style="${colorStyle(indv)}">${indv.toLocaleString('ko-KR')}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  }
+
+  body.innerHTML = html || '<p style="color:var(--fg3);text-align:center;padding:30px;">표시할 데이터가 없습니다.</p>';
+}
+
+function buildCandleChart(bars) {
+  const W = 360, H = 180;
+  const n = Math.min(bars.length, 60);
+  const slice = bars.slice(bars.length - n);
+
+  const prices = slice.flatMap(b => [b.high, b.low]);
+  const minP = Math.min(...prices);
+  const maxP = Math.max(...prices);
+  const range = maxP - minP || 1;
+  const padT = 8, padB = 16, padL = 0, padR = 0;
+  const cH = H - padT - padB;
+  const cW = W - padL - padR;
+  const bw = Math.max(2, Math.floor(cW / n) - 1);
+  const gap = cW / n;
+
+  const py = p => padT + cH - ((p - minP) / range * cH);
+
+  let svgBody = '';
+  slice.forEach((b, i) => {
+    const x = padL + i * gap + gap / 2;
+    const isUp = b.close >= b.open;
+    const color = isUp ? 'var(--red)' : 'var(--accent)';
+    const yH = py(b.high), yL = py(b.low);
+    const yO = py(b.open), yC = py(b.close);
+    const top = Math.min(yO, yC), bot = Math.max(yO, yC);
+    const bodyH = Math.max(1, bot - top);
+    svgBody += `<line x1="${x}" y1="${yH}" x2="${x}" y2="${yL}" stroke="${color}" stroke-width="1" opacity="0.7"/>`;
+    svgBody += `<rect x="${x - bw/2}" y="${top}" width="${bw}" height="${bodyH}" fill="${color}" rx="1"/>`;
+  });
+
+  // 최저/최고 라벨
+  const lMin = `${fmtNum(minP)}`, lMax = `${fmtNum(maxP)}`;
+  svgBody += `<text x="${padL+2}" y="${padT+8}" font-size="9" fill="var(--fg3)">${lMax}</text>`;
+  svgBody += `<text x="${padL+2}" y="${H-padB-2}" font-size="9" fill="var(--fg3)">${lMin}</text>`;
+
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block;max-width:100%;">${svgBody}</svg>`;
+}
+
+// ─── 모든 탭에서 종목명에 클릭 핸들러 연결 ─────────────────
+// renderScreener, renderPositions 등의 종목 행에 onclick 추가를 위해
+// 각 렌더 함수에서 stock-link 클래스 사용 → 위임 처리
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-stock-code]');
+  if (el) {
+    e.stopPropagation();
+    const code = el.dataset.stockCode;
+    const name = el.dataset.stockName || code;
+    openStockDetail(code, name);
+  }
+});
 </script>
