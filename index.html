@@ -1587,28 +1587,23 @@ function screenerFormHtml(s = {}) {
   ).join('');
   return `
     <p style="font-size:11px;color:var(--fg3);margin-bottom:8px;">종목명으로 검색하거나, 아래 빠른 선택 버튼을 누르세요.</p>
+    <input type="hidden" id="f-ticker" value="${s.ticker||''}">
     <div class="fetch-row" style="margin-bottom:8px;">
       <div class="form-group" style="flex:1;margin-bottom:0;">
         <label class="form-label">종목명 검색</label>
         <input class="form-input" id="f-search" placeholder="삼성전자, SK하이닉스..." autocomplete="off">
-      </div>
-    </div>
-    <div id="f-search-results" style="margin-bottom:8px;display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;overflow:hidden;"></div>
-    <div class="quick-stocks">${quickBtns}</div>
-    <div class="fetch-row" style="margin-top:12px;">
-      <div class="form-group" style="flex:1;margin-bottom:0;">
-        <label class="form-label">종목코드</label>
-        <input class="form-input" id="f-ticker" placeholder="005930" value="${s.ticker||''}" style="font-family:'JetBrains Mono',monospace;" autocomplete="off">
       </div>
       <button class="btn-fetch" id="f-fetch-btn" type="button">
         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         조회
       </button>
     </div>
+    <div id="f-search-results" style="margin-bottom:8px;display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;overflow:hidden;"></div>
+    <div class="quick-stocks">${quickBtns}</div>
     <div id="f-fetch-status" style="margin-top:6px;"></div>
     <div class="form-row" style="margin-top:10px;">
-      <div class="form-group"><label class="form-label">종목명</label>
-        <input class="form-input" id="f-name" placeholder="자동 입력" value="${s.name||''}"></div>
+      <div class="form-group"><label class="form-label">종목명 (종목코드)</label>
+        <input class="form-input" id="f-name" placeholder="자동 입력" value="${s.name && s.ticker ? s.name+'('+s.ticker+')' : s.name||''}" readonly style="background:var(--surface2);color:var(--fg2);cursor:default;"></div>
       <div class="form-group"><label class="form-label">현재가 (원)</label>
         <input type="text" inputmode="numeric" class="form-input" id="f-curr" placeholder="자동 입력" value="${s.curr ? s.curr.toLocaleString('ko-KR') : ''}"></div>
     </div>
@@ -1643,7 +1638,8 @@ async function applyKisData(code, nameHint) {
     const d = await fetchKisData(code);
     const fmt = n => n ? n.toLocaleString('ko-KR') : '';
     document.getElementById('f-ticker').value = d.symbol;
-    document.getElementById('f-name').value = nameHint || d.name;
+    const displayName = (nameHint || d.name) + (d.symbol ? ` (${d.symbol})` : '');
+    document.getElementById('f-name').value = displayName;
     document.getElementById('f-curr').value = fmt(d.curr);
     document.getElementById('f-high20').value = fmt(d.high20);
     document.getElementById('f-vol').value = fmt(d.todayVol);
@@ -1691,6 +1687,11 @@ function bindFetchBtn() {
             applyKisData(code, name);
           });
         });
+        // 검색어가 6자리 숫자면 코드로 간주해 조회 버튼 활성화 힌트
+        const q2 = searchInput.value.trim();
+        if (/^\d{6}$/.test(q2)) {
+          document.getElementById('f-ticker').value = q2;
+        }
       }, 300);
     });
     // 외부 클릭 시 검색결과 숨김
@@ -1712,19 +1713,27 @@ function bindFetchBtn() {
     });
   });
 
-  // 직접 입력 조회 버튼
+  // 검색창에서 엔터 또는 조회 버튼 → 검색어가 6자리 코드면 직접 조회, 아니면 텍스트 검색
   const fetchBtn = document.getElementById('f-fetch-btn');
   if (!fetchBtn) return;
   fetchBtn.addEventListener('click', () => {
-    const ticker = document.getElementById('f-ticker').value.trim();
-    if (!ticker) return;
-    applyKisData(ticker, '');
+    const q = searchInput ? searchInput.value.trim() : '';
+    if (/^\d{6}$/.test(q)) {
+      // 종목코드 직접 입력
+      document.getElementById('f-ticker').value = q;
+      applyKisData(q, '');
+    } else if (q) {
+      // 종목명 검색: 이미 input 이벤트로 드롭다운이 열림 → 검색 트리거
+      searchInput.dispatchEvent(new Event('input'));
+    } else {
+      const ticker = document.getElementById('f-ticker').value.trim();
+      if (ticker) applyKisData(ticker, '');
+    }
   });
 
-  // 엔터키로도 조회
-  const tickerInput = document.getElementById('f-ticker');
-  if (tickerInput) {
-    tickerInput.addEventListener('keydown', (e) => {
+  // 검색 입력창 엔터키
+  if (searchInput) {
+    searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); fetchBtn?.click(); }
     });
   }
@@ -1735,7 +1744,7 @@ function collectScreenerForm(existing = {}) {
     ...existing,
     id: existing.id || uid(),
     ticker: document.getElementById('f-ticker').value.toUpperCase(),
-    name: document.getElementById('f-name').value,
+    name: document.getElementById('f-name').value.replace(/\s*\(\d{6}\)\s*$/, ''),
     curr: +(document.getElementById('f-curr').value.replace(/,/g,'')),
     high20: +(document.getElementById('f-high20').value.replace(/,/g,'')),
     vol: +(document.getElementById('f-vol').value.replace(/,/g,'')),
