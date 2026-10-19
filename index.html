@@ -1170,6 +1170,7 @@
         <div>
           <div id="dt-name" style="font-size:18px;font-weight:800;"></div>
           <div id="dt-code" style="font-size:12px;color:var(--fg3);margin-top:2px;"></div>
+          <div id="dt-base-date" style="font-size:11px;color:var(--orange);margin-top:2px;display:none;"></div>
         </div>
         <div style="display:flex;align-items:center;gap:12px;">
           <div style="text-align:right;">
@@ -2121,7 +2122,8 @@ window.deleteHolding = (i) => {
 // 현재가 자동 업데이트 (탭 진입 시 호출)
 // 1순위: Cron이 KV에 저장한 종가 스냅샷 (/holdings-quotes)
 // 2순위: 실시간 조회 (/quotes) — KV에 데이터 없을 때만
-let lastFetchedAt = '';
+let lastFetchedAt   = '';
+let lastFetchedTime = ''; // HH:MM (KST)
 async function loadHoldingPrices() {
   if (!holdings.length) return;
   const codes = holdings.map(h => h.code).filter(Boolean);
@@ -2141,7 +2143,8 @@ async function loadHoldingPrices() {
           }
         });
         save(KEYS_HOLDING, holdings);
-        lastFetchedAt = snap.fetchedAt || '';
+        lastFetchedAt   = snap.fetchedAt   || '';
+        lastFetchedTime = snap.fetchedTime || '';
         updateFetchedAtLabel();
         renderHoldings();
         return; // 스냅샷으로 완료
@@ -2163,7 +2166,8 @@ async function loadHoldingPrices() {
         });
       });
       save(KEYS_HOLDING, holdings);
-      lastFetchedAt = data.fetchedAt || '';
+      lastFetchedAt   = data.fetchedAt   || '';
+      lastFetchedTime = data.fetchedTime || '';
       updateFetchedAtLabel();
       renderHoldings();
     }
@@ -2176,9 +2180,24 @@ function updateFetchedAtLabel() {
   const el = document.getElementById('fetched-at-label');
   if (!el) return;
   if (!lastFetchedAt) { el.textContent = ''; return; }
-  // "2026-10-16" → "2026년 10월 16일 종가기준"
+  // "2026-10-19" → 날짜 파싱
   const [y, m, d] = lastFetchedAt.split('-');
-  el.textContent = `${y}년 ${parseInt(m)}월 ${parseInt(d)}일 종가기준`;
+  const label = `${y}년 ${parseInt(m)}월 ${parseInt(d)}일`;
+
+  // 현재 KST 시간 기준으로 라벨 보정
+  // 오늘 날짜인데 16:00 이전이면 아직 종가 확정 전 → "전일 종가 기준"으로 안내
+  const nowKST = new Date(Date.now() + 9 * 60 * 60 * 1000); // UTC+9
+  const todayKST = nowKST.toISOString().slice(0, 10); // YYYY-MM-DD
+  const kstHour = nowKST.getUTCHours(); // KST 시간 (UTC+9 적용 후의 UTC 시간)
+
+  if (lastFetchedAt === todayKST && kstHour < 16) {
+    // 오늘 날짜 데이터인데 오후 4시 전 → 실제로는 어제/전 거래일 장 마감 후 저장된 것
+    el.textContent = `${label} 종가기준 (장 마감 전)`;
+    el.style.color = 'var(--orange)';
+  } else {
+    el.textContent = `${label} 종가기준`;
+    el.style.color = '';
+  }
 }
 
 window.openHoldingModal = () => {
@@ -2948,20 +2967,41 @@ async function loadHomeData(force) {
   if (homeLoaded && !force) return;
   homeLoaded = true;
 
+  // 로딩 표시
+  const invBody = document.getElementById('home-investor-body');
+  const sectorGrid = document.getElementById('home-sector-grid');
+  const leaderEl = document.getElementById('home-leader-list');
+  if (invBody)    invBody.innerHTML    = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;">로딩 중…</div>';
+  if (sectorGrid) sectorGrid.innerHTML = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;grid-column:1/-1;">로딩 중…</div>';
+  if (leaderEl)   leaderEl.innerHTML   = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;">로딩 중…</div>';
+
   // 동시 3개 요청
   const [idxRes, invRes, secRes] = await Promise.allSettled([
-    fetch(`${KIS_WORKER}/market-index`).then(r => r.json()),
-    fetch(`${KIS_WORKER}/market-investor`).then(r => r.json()),
-    fetch(`${KIS_WORKER}/market-sector`).then(r => r.json()),
+    fetch(`${KIS_WORKER}/market-index`).then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }),
+    fetch(`${KIS_WORKER}/market-investor`).then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }),
+    fetch(`${KIS_WORKER}/market-sector`).then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }),
   ]);
 
   const idx = idxRes.status === 'fulfilled' ? idxRes.value : null;
   const inv = invRes.status === 'fulfilled' ? invRes.value : null;
   const sec = secRes.status === 'fulfilled' ? secRes.value : null;
 
-  if (idx) renderHomeIndex(idx);
-  if (inv) renderHomeInvestor(inv);
-  if (sec) renderHomeSector(sec);
+  if (idx) {
+    renderHomeIndex(idx);
+  }
+
+  if (inv) {
+    renderHomeInvestor(inv);
+  } else {
+    if (invBody) invBody.innerHTML = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;">수급 데이터를 불러올 수 없습니다.</div>';
+  }
+
+  if (sec) {
+    renderHomeSector(sec);
+  } else {
+    if (sectorGrid) sectorGrid.innerHTML = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;grid-column:1/-1;">업종 데이터를 불러올 수 없습니다.</div>';
+    if (leaderEl)   leaderEl.innerHTML   = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;">주도주 데이터를 불러올 수 없습니다.</div>';
+  }
 
   document.getElementById('home-update-time').textContent =
     '업데이트: ' + new Date().toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit' });
@@ -3113,15 +3153,29 @@ function renderDetailModal(data) {
   const { info, bars, investor } = data;
   const body = document.getElementById('detail-body');
 
-  // 헤더 가격 정보
+  // 헤더 가격 정보 — Worker가 파싱된 info 객체를 반환함
   if (info) {
-    const pr = parseFloat(info.stck_prpr) || 0;
-    const chg = parseFloat(info.prdy_ctrt) || 0;
-    const chgAmt = parseFloat(info.prdy_vrss) || 0;
+    const pr     = info.curr  || 0;
+    const chg    = info.chg   || 0;
+    const chgAmt = info.chgAmt || 0;
     document.getElementById('dt-price').textContent = pr.toLocaleString('ko-KR');
     document.getElementById('dt-price').style = colorStyle(chg);
-    document.getElementById('dt-chg').textContent = `${signStr(chg)}${chg.toFixed(2)}% (${signStr(chgAmt)}${fmtNum(chgAmt)})`;
+    document.getElementById('dt-chg').textContent =
+      `${signStr(chg)}${chg.toFixed(2)}% (${signStr(chgAmt)}${fmtNum(chgAmt)})`;
     document.getElementById('dt-chg').style = colorStyle(chg);
+
+    // 기준일 표시 (16시 이전 → 직전 거래일 종가 기준 안내)
+    const baseDateEl = document.getElementById('dt-base-date');
+    if (info.isBeforeClose && info.baseDate) {
+      const bd = info.baseDate;
+      const bdFmt = bd.length === 8
+        ? `${bd.slice(0,4)}.${bd.slice(4,6)}.${bd.slice(6,8)} 종가기준`
+        : bd;
+      baseDateEl.textContent = `⚠ ${bdFmt} (장 마감 전)`;
+      baseDateEl.style.display = '';
+    } else {
+      baseDateEl.style.display = 'none';
+    }
   }
 
   // 본문 구성
@@ -3135,13 +3189,27 @@ function renderDetailModal(data) {
     </div>`;
   }
 
-  // 2) 당일 OHLCV
+  // 2) 기준일 시세 (16시 이전 → 직전 거래일, 이후 → 당일)
   if (bars && bars.length > 0) {
-    const today = bars[bars.length - 1];
+    // bars는 최신순이 아닌 오래된 순으로 정렬 — 마지막이 가장 최신
+    // isBeforeClose 여부에 따라 표시 기준일 결정
+    let targetBar;
+    if (info && info.isBeforeClose && info.baseDate) {
+      // 직전 거래일 bar 찾기
+      targetBar = bars.find(b => b.date === info.baseDate);
+    }
+    if (!targetBar) targetBar = bars[bars.length - 1]; // fallback: 가장 최신
+
+    const bd = targetBar.date || '';
+    const bdLabel = bd.length === 8
+      ? `${parseInt(bd.slice(4,6))}월 ${parseInt(bd.slice(6,8))}일 시세`
+      : '시세';
+
     html += `<div style="margin-bottom:16px;">
-      <div style="font-size:12px;font-weight:700;color:var(--fg3);margin-bottom:8px;">당일 시세</div>
+      <div style="font-size:12px;font-weight:700;color:var(--fg3);margin-bottom:8px;">${bdLabel}</div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
-        ${[['시가', today.open],['고가', today.high],['저가', today.low],['종가', today.close],['거래량', today.vol],['거래대금(억)', Math.round((today.amt||0)/1e8)]].map(([l,v]) =>
+        ${[['시가', targetBar.open],['고가', targetBar.high],['저가', targetBar.low],
+           ['종가', targetBar.close],['거래량', targetBar.vol],['거래대금(억)', Math.round((targetBar.amt||0)/1e8)]].map(([l,v]) =>
           `<div style="background:var(--surface2);border-radius:10px;padding:10px 8px;text-align:center;">
             <div style="font-size:11px;color:var(--fg3);margin-bottom:4px;">${l}</div>
             <div style="font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;">${typeof v === 'number' ? v.toLocaleString('ko-KR') : v}</div>
