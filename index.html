@@ -878,15 +878,46 @@
         </div>
       </div>
 
-      <!-- 자동선별 즐겨찾기 섹션 -->
-      <div id="fav-section" style="margin-bottom:16px;">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
-          <span style="font-size:14px;font-weight:700;">★ 자동선별 즐겨찾기</span>
-          <span id="fav-count" style="font-size:12px;color:var(--fg3);"></span>
+      <!-- 자동선별 섹션 -->
+      <div id="auto-in-screener" style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <h2 style="font-size:16px;font-weight:700;">🔍 자동 종목 선별</h2>
+          <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px;" onclick="loadScanResult()">새로고침</button>
         </div>
-        <div id="fav-list">
-          <p style="font-size:13px;color:var(--fg3);padding:10px 0;">자동선별 탭에서 ★ 아이콘을 눌러 즐겨찾기를 추가하세요</p>
+        <!-- 모드 토글 -->
+        <div style="display:flex;background:var(--surface2);border-radius:10px;padding:3px;margin-bottom:12px;">
+          <button id="toggle-basic" onclick="setScanMode('basic')"
+            style="flex:1;border:none;border-radius:8px;padding:7px 0;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;background:var(--accent);color:#fff;">
+            📊 기본 (2조건)
+          </button>
+          <button id="toggle-strict" onclick="setScanMode('strict')"
+            style="flex:1;border:none;border-radius:8px;padding:7px 0;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;background:transparent;color:var(--fg2);">
+            🎯 엄격 (3조건)
+          </button>
         </div>
+        <div style="font-size:11px;color:var(--fg2);margin-bottom:10px;" id="scan-mode-desc">
+          기본: 20일 신고가 돌파 + 거래량 1.5배
+        </div>
+        <div id="scan-meta" style="font-size:12px;color:var(--fg2);margin-bottom:12px;"></div>
+        <!-- 카카오 알림 설정 카드 -->
+        <div style="background:var(--surface2);border-radius:12px;padding:14px 16px;margin-bottom:14px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span style="font-size:14px;font-weight:700;">🔔 카카오톡 자동 알림</span>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+              <span id="notify-label" style="font-size:12px;color:var(--fg3);">OFF</span>
+              <div onclick="toggleNotify()" id="notify-toggle"
+                style="width:44px;height:24px;border-radius:12px;background:#ccc;position:relative;cursor:pointer;transition:background 0.2s;">
+                <div id="notify-thumb"
+                  style="width:20px;height:20px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>
+              </div>
+            </label>
+          </div>
+          <div style="font-size:12px;color:var(--fg3);">
+            매일 평일 오후 4시 스캔 완료 후 자동 전송됩니다.
+          </div>
+          <div id="kakao-setting-status" style="font-size:11px;margin-top:6px;color:var(--fg3);min-height:16px;"></div>
+        </div>
+        <div id="scan-list"></div>
       </div>
 
       <div style="border-top:1px solid var(--border);margin-bottom:16px;"></div>
@@ -1099,49 +1130,84 @@
       <div id="journal-list"></div>
     </div>
 
-    <!-- 자동선별 탭 패널 -->
-    <div class="tab-panel" id="panel-auto">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-        <h2 style="font-size:16px;font-weight:700;">🔍 자동 종목 선별</h2>
-        <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px;" onclick="loadScanResult()">새로고침</button>
-      </div>
-      <!-- 모드 토글 -->
-      <div style="display:flex;background:var(--surface1);border-radius:10px;padding:3px;margin-bottom:12px;">
-        <button id="toggle-basic" onclick="setScanMode('basic')"
-          style="flex:1;border:none;border-radius:8px;padding:7px 0;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;background:var(--accent);color:#000;">
-          📊 기본 (2조건)
-        </button>
-        <button id="toggle-strict" onclick="setScanMode('strict')"
-          style="flex:1;border:none;border-radius:8px;padding:7px 0;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;background:transparent;color:var(--fg-muted);">
-          🎯 엄격 (3조건)
-        </button>
-      </div>
-      <div style="font-size:11px;color:var(--fg-muted);margin-bottom:10px;" id="scan-mode-desc">
-        기본: 20일 신고가 돌파 + 거래량 1.5배
-      </div>
-      <div id="scan-meta" style="font-size:12px;color:var(--fg-muted);margin-bottom:12px;"></div>
+    <!-- ══ 모의투자 탭 패널 ════════════════════════════════════════ -->
+    <div class="tab-panel" id="panel-mock">
 
-      <!-- 카카오 알림 설정 카드 -->
-      <div style="background:var(--surface1);border-radius:12px;padding:14px 16px;margin-bottom:14px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-          <span style="font-size:14px;font-weight:700;">🔔 카카오톡 자동 알림</span>
-          <!-- ON/OFF 토글 -->
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-            <span id="notify-label" style="font-size:12px;color:var(--fg-muted);">OFF</span>
-            <div onclick="toggleNotify()" id="notify-toggle"
-              style="width:44px;height:24px;border-radius:12px;background:#ccc;position:relative;cursor:pointer;transition:background 0.2s;">
-              <div id="notify-thumb"
-                style="width:20px;height:20px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></div>
-            </div>
-          </label>
+      <!-- 잔고 요약 -->
+      <div class="summary-row" id="mock-balance-summary">
+        <div class="summary-tile">
+          <div class="summary-tile-val" id="mock-deposit">—</div>
+          <div class="summary-tile-label">예수금</div>
         </div>
-        <div style="font-size:12px;color:var(--fg-muted);">
-          매일 평일 오후 4시 스캔 완료 후 자동 전송됩니다.
+        <div class="summary-tile">
+          <div class="summary-tile-val" id="mock-eval">—</div>
+          <div class="summary-tile-label">평가금액</div>
         </div>
-        <div id="kakao-setting-status" style="font-size:11px;margin-top:6px;color:var(--fg-muted);min-height:16px;"></div>
+        <div class="summary-tile">
+          <div class="summary-tile-val" id="mock-pnl">—</div>
+          <div class="summary-tile-label">평가손익</div>
+        </div>
       </div>
 
-      <div id="scan-list"></div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+        <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px;" onclick="loadMockBalance()">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          잔고 새로고침
+        </button>
+      </div>
+
+      <!-- 보유 종목 -->
+      <div class="section-head">
+        <h2>보유 종목</h2>
+      </div>
+      <div id="mock-holdings" style="margin-bottom:16px;">
+        <div class="card" style="text-align:center;color:var(--fg3);padding:24px;font-size:13px;">잔고 조회 중…</div>
+      </div>
+
+      <!-- 빠른 매수 -->
+      <div class="section-head" style="margin-top:8px;">
+        <h2>빠른 매수</h2>
+        <span style="font-size:11px;color:var(--fg3);">스크리너에서 매수 버튼으로도 접근 가능</span>
+      </div>
+      <div class="card">
+        <div class="form-group">
+          <label class="form-label">종목코드</label>
+          <input type="text" class="form-input" id="mock-quick-code" placeholder="005930" maxlength="6" inputmode="numeric"
+            style="font-family:'JetBrains Mono',monospace;letter-spacing:1px;"
+            oninput="this.value=this.value.replace(/\D/g,'')">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">주문 종류</label>
+            <select class="form-input" id="mock-quick-type">
+              <option value="01">시장가</option>
+              <option value="00">지정가</option>
+            </select>
+          </div>
+          <div class="form-group" id="mock-quick-price-group" style="display:none;">
+            <label class="form-label">지정가 (원)</label>
+            <input type="number" class="form-input" id="mock-quick-price" placeholder="50000" inputmode="numeric">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">수량 (주)</label>
+          <input type="number" class="form-input" id="mock-quick-qty" placeholder="10" min="1" inputmode="numeric">
+        </div>
+        <button class="btn btn-primary" onclick="submitMockQuickOrder()" style="background:var(--green);">
+          📈 모의 매수 주문
+        </button>
+        <div id="mock-quick-status" style="margin-top:10px;text-align:center;font-size:13px;min-height:18px;"></div>
+      </div>
+
+      <!-- 최근 주문 내역 -->
+      <div class="section-head" style="margin-top:8px;">
+        <h2>최근 주문</h2>
+        <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px;" onclick="loadMockOrders()">조회</button>
+      </div>
+      <div id="mock-orders">
+        <div class="card" style="text-align:center;color:var(--fg3);padding:20px;font-size:13px;">"조회" 버튼을 눌러 주문 내역을 확인하세요</div>
+      </div>
+
     </div>
 
   </main>
@@ -1156,9 +1222,9 @@
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
       스크리너
     </button>
-    <button class="tab-btn" data-tab="auto">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      자동선별
+    <button class="tab-btn" data-tab="mock">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      모의투자
     </button>
     <button class="tab-btn" data-tab="journal">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
@@ -1331,7 +1397,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('panel-' + tab).classList.add('active');
-    if (tab === 'home') loadHomeData(true); // 탭 클릭 시 항상 새로고침
+    if (tab === 'home') loadHomeData(); // 5분 캐시 적용
   });
 });
 
@@ -2584,16 +2650,12 @@ async function loadScanResult() {
       const pctFromHigh = r.high20 > 0 ? ((r.curr - r.high20) / r.high20 * 100).toFixed(1) : null;
       const volRatio = r.avgVol > 0 ? (r.todayVol / r.avgVol).toFixed(1) : null;
       const pct52 = r.high52 > 0 ? (r.curr / r.high52 * 100).toFixed(1) : null;
-      const isFav = getFavorites().some(f => f.code === r.code);
       return `
       <div class="card">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px;">
           <div>
             <span class="card-title">${r.name}</span>
             <span style="font-size:12px;color:var(--fg3);margin-left:6px;">${r.code}</span>
-            <button onclick="toggleFavorite('${r.code}','${r.name}',${r.curr||0},this,{score:${r.score||0},high20:${r.high20||0},high52:${r.high52||0},avgVol:${r.avgVol||0},todayVol:${r.todayVol||0},atr:${r.atr||0}})"
-              style="background:none;border:none;cursor:pointer;font-size:16px;padding:0 4px;line-height:1;vertical-align:middle;"
-              title="${isFav?'즐겨찾기 해제':'즐겨찾기 추가'}">${isFav?'★':'☆'}</button>
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
             <span style="background:${badgeColor}22;color:${badgeColor};border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;">${badgeText}</span>
@@ -2706,15 +2768,15 @@ async function saveKakaoToken() {
   }
 }
 
-// 자동선별 탭 클릭 시 자동 로드
+// 탭 클릭 시 추가 로드
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    if (btn.dataset.tab === 'auto') {
+    if (btn.dataset.tab === 'screener') {
       loadScanResult();
       loadKakaoStatus();
     }
-    if (btn.dataset.tab === 'screener') {
-      renderFavorites();
+    if (btn.dataset.tab === 'mock') {
+      loadMockBalance();
     }
     if (btn.dataset.tab === 'journal') {
       loadHoldingPrices();
@@ -2722,118 +2784,129 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
-// ─── 즐겨찾기 (자동선별 → 스크리너 탭) ──────────────────────
-const FAV_KEY = 'tf_favorites';
+// ─── 모의투자 탭 ─────────────────────────────────────────────
 
-function getFavorites() {
-  try { return JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); } catch { return []; }
-}
-function saveFavorites(favs) {
-  try { localStorage.setItem(FAV_KEY, JSON.stringify(favs)); } catch {}
-}
+async function loadMockBalance() {
+  const el = document.getElementById('mock-holdings');
+  try {
+    const res = await fetch(`${KIS_WORKER}/balance`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '잔고 조회 실패');
 
-window.toggleFavorite = function(code, name, curr, btnEl, extra) {
-  let favs = getFavorites();
-  const idx = favs.findIndex(f => f.code === code);
-  if (idx >= 0) {
-    favs.splice(idx, 1);
-    if (btnEl) { btnEl.textContent = '☆'; btnEl.title = '즐겨찾기 추가'; }
-  } else {
-    favs.push({ code, name, curr, addedAt: new Date().toISOString(), ...(extra || {}) });
-    if (btnEl) { btnEl.textContent = '★'; btnEl.title = '즐겨찾기 해제'; }
-  }
-  saveFavorites(favs);
-  renderFavorites();
-};
+    const deposit = parseInt(data.deposit || 0);
+    const evalAmt = parseInt(data.evalAmt || 0);
+    const pnl = parseInt(data.pnl || 0);
+    document.getElementById('mock-deposit').textContent = deposit ? deposit.toLocaleString() + '원' : '—';
+    document.getElementById('mock-eval').textContent = evalAmt ? evalAmt.toLocaleString() + '원' : '—';
+    const pnlEl = document.getElementById('mock-pnl');
+    pnlEl.textContent = pnl ? (pnl >= 0 ? '+' : '') + pnl.toLocaleString() + '원' : '—';
+    pnlEl.className = 'summary-tile-val ' + (pnl >= 0 ? 'green' : 'red');
 
-function renderFavorites() {
-  const favs = getFavorites();
-  const list = document.getElementById('fav-list');
-  const count = document.getElementById('fav-count');
-  if (!list) return;
-
-  count.textContent = favs.length ? `${favs.length}개` : '';
-
-  if (!favs.length) {
-    list.innerHTML = '<p style="font-size:13px;color:var(--fg3);padding:10px 0;">자동선별 탭에서 ★ 아이콘을 눌러 즐겨찾기를 추가하세요</p>';
-    return;
-  }
-
-  list.innerHTML = favs.map((f, i) => {
-    const score = f.score || 0;
-    const isStrict = score >= 100;
-    const isBasic  = score >= 67 && score < 100;
-    const isWatch  = score >= 34 && score < 67;
-    const badgeText  = isStrict ? '강력 돌파 ⚡' : isBasic ? '돌파 🔥' : isWatch ? '관찰' : '대기';
-    const badgeColor = (isStrict || isBasic) ? '#22c55e' : isWatch ? '#f59e0b' : '#94a3b8';
-    const fillW     = Math.min(100, score);
-    const fillColor = (isStrict || isBasic) ? 'var(--green)' : isWatch ? 'var(--orange)' : 'var(--border)';
-    const pctFromHigh = f.high20 > 0 ? ((f.curr - f.high20) / f.high20 * 100).toFixed(1) : null;
-    const volRatio    = f.avgVol > 0 ? (f.todayVol / f.avgVol).toFixed(1) : null;
-    const pct52       = f.high52 > 0 ? (f.curr / f.high52 * 100).toFixed(1) : null;
-
-    return `
-    <div class="card" style="margin-bottom:8px;">
-      <!-- 항상 보이는 헤더 행 -->
-      <div style="display:flex;align-items:center;gap:8px;cursor:pointer;" onclick="toggleFavDetail(${i})">
-        <div style="flex:1;min-width:0;">
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span class="stock-link" data-stock-code="${f.code}" data-stock-name="${f.name}" style="font-weight:700;font-size:14px;">${f.name}</span>
-            <span style="font-size:12px;color:var(--fg3);">${f.code}</span>
-            <span style="background:${badgeColor}22;color:${badgeColor};border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;">${badgeText}</span>
+    const stocks = data.stocks || [];
+    if (!stocks.length) {
+      el.innerHTML = '<div class="card" style="text-align:center;color:var(--fg3);padding:20px;font-size:13px;">보유 종목 없음</div>';
+      return;
+    }
+    el.innerHTML = stocks.map(s => {
+      const ret = parseFloat(s.ret || 0);
+      const retColor = ret >= 0 ? 'var(--green)' : 'var(--red)';
+      const evalPnl = parseInt(s.evalPnl || 0);
+      return `
+      <div class="card" style="margin-bottom:8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="font-weight:700;font-size:14px;">${s.name || s.code}</div>
+            <div style="font-size:12px;color:var(--fg3);">${s.code} · ${parseInt(s.qty||0)}주 · 평균 ${parseInt(s.avgPrice||0).toLocaleString()}원</div>
           </div>
-          <div style="font-size:12px;color:var(--fg3);margin-top:2px;">${f.curr ? f.curr.toLocaleString()+'원' : '—'} ${score ? `· ${score}점` : ''}</div>
+          <div style="text-align:right;">
+            <div style="font-size:14px;font-weight:700;">${parseInt(s.currPrice||0).toLocaleString()}원</div>
+            <div style="font-size:12px;color:${retColor};">${ret>=0?'+':''}${ret.toFixed(2)}%</div>
+          </div>
         </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-          <button onclick="event.stopPropagation();openOrderModal('${f.code}','${f.name}',${f.curr||0},'buy')"
-            style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;">📈 매수</button>
-          <button onclick="event.stopPropagation();removeFavorite('${f.code}')"
-            style="background:none;border:none;cursor:pointer;font-size:18px;color:#f59e0b;padding:2px;">★</button>
-          <span id="fav-chevron-${i}" style="font-size:12px;color:var(--fg3);transition:transform 0.2s;">▼</span>
+        <div style="display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
+          <span style="font-size:12px;color:var(--fg3);">평가손익: <span style="color:${retColor};font-weight:600;">${evalPnl>=0?'+':''}${evalPnl.toLocaleString()}원</span></span>
+          <button onclick="openOrderModal('${s.code}','${s.name||s.code}',${parseInt(s.currPrice||0)},'sell')"
+            style="background:var(--red-soft);color:var(--red);border:none;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;">📉 매도</button>
         </div>
-      </div>
-      <!-- 접힌 상세 정보 (기본 숨김) -->
-      <div id="fav-detail-${i}" hidden style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px;">
-        <div class="data-row">
-          <span class="data-label">20일 신고가</span>
-          <span class="data-value">${f.high20 ? f.high20.toLocaleString()+'원' : '—'}${pctFromHigh !== null ? ` <span style="font-size:11px;color:${parseFloat(pctFromHigh)>=0?'var(--green)':'var(--red)'}">(${parseFloat(pctFromHigh)>=0?'+':''}${pctFromHigh}%)</span>` : ''}</span>
-        </div>
-        <div class="data-row">
-          <span class="data-label">거래량 / 평균</span>
-          <span class="data-value">${f.todayVol ? f.todayVol.toLocaleString() : '—'} / ${f.avgVol ? f.avgVol.toLocaleString() : '—'}${volRatio ? ` <span style="font-size:11px;color:var(--fg3)">(${volRatio}배)</span>` : ''}</span>
-        </div>
-        <div class="data-row">
-          <span class="data-label">52주 신고가</span>
-          <span class="data-value">${f.high52 ? f.high52.toLocaleString()+'원' : '—'}${pct52 ? ` <span style="font-size:11px;color:${parseFloat(pct52)>=90?'var(--green)':'var(--fg3)'}">(${pct52}%)</span>` : ''}</span>
-        </div>
-        <div class="data-row">
-          <span class="data-label">ATR (14일)</span>
-          <span class="data-value">${f.atr ? f.atr.toLocaleString()+'원' : '—'}</span>
-        </div>
-        <div class="signal-bar" style="margin-top:8px;">
-          <div class="signal-fill" style="width:${fillW}%;background:${fillColor};"></div>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
+      </div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="card" style="text-align:center;color:var(--red);padding:20px;font-size:13px;">❌ ${e.message}</div>`;
+  }
 }
 
-window.toggleFavDetail = function(i) {
-  const detail  = document.getElementById(`fav-detail-${i}`);
-  const chevron = document.getElementById(`fav-chevron-${i}`);
-  if (!detail) return;
-  const isHidden = detail.hidden;
-  detail.hidden = !isHidden;
-  chevron.style.transform = isHidden ? 'rotate(180deg)' : '';
-};
+async function loadMockOrders() {
+  const el = document.getElementById('mock-orders');
+  el.innerHTML = '<div class="card" style="text-align:center;color:var(--fg3);padding:20px;font-size:13px;">조회 중…</div>';
+  try {
+    const res = await fetch(`${KIS_WORKER}/orders`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '주문 조회 실패');
+    const orders = data.orders || [];
+    if (!orders.length) {
+      el.innerHTML = '<div class="card" style="text-align:center;color:var(--fg3);padding:20px;font-size:13px;">오늘 주문 내역 없음</div>';
+      return;
+    }
+    el.innerHTML = orders.slice(0, 20).map(o => {
+      const isBuy = o.side === 'buy' || o.sideCode === '02';
+      const sideColor = isBuy ? 'var(--accent)' : 'var(--red)';
+      const sideText = isBuy ? '매수' : '매도';
+      return `
+      <div class="card" style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <span style="font-weight:700;font-size:13px;">${o.name || o.code}</span>
+            <span style="font-size:12px;color:var(--fg3);margin-left:6px;">${o.code}</span>
+          </div>
+          <span style="font-size:12px;font-weight:700;color:${sideColor};">${sideText}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:12px;color:var(--fg3);">
+          <span>${parseInt(o.qty||0)}주 · ${o.price ? parseInt(o.price).toLocaleString()+'원' : '시장가'}</span>
+          <span style="color:${o.status === '체결' ? 'var(--green)' : 'var(--fg3)'}">${o.status || '—'}</span>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = `<div class="card" style="text-align:center;color:var(--red);padding:20px;font-size:13px;">❌ ${e.message}</div>`;
+  }
+}
 
-window.removeFavorite = function(code) {
-  let favs = getFavorites().filter(f => f.code !== code);
-  saveFavorites(favs);
-  renderFavorites();
-};
+document.getElementById('mock-quick-type').addEventListener('change', function() {
+  document.getElementById('mock-quick-price-group').style.display = this.value === '00' ? 'block' : 'none';
+});
 
-// ─── 주문 모달 ───────────────────────────────────────────────
+async function submitMockQuickOrder() {
+  const code = document.getElementById('mock-quick-code').value.trim();
+  const orderType = document.getElementById('mock-quick-type').value;
+  const price = parseFloat(document.getElementById('mock-quick-price').value) || 0;
+  const qty = parseInt(document.getElementById('mock-quick-qty').value) || 0;
+  const status = document.getElementById('mock-quick-status');
+
+  if (!code || code.length !== 6) { status.textContent = '❌ 종목코드 6자리를 입력하세요'; status.style.color = 'var(--red)'; return; }
+  if (qty < 1) { status.textContent = '❌ 수량을 입력하세요'; status.style.color = 'var(--red)'; return; }
+  if (orderType === '00' && price < 1) { status.textContent = '❌ 지정가를 입력하세요'; status.style.color = 'var(--red)'; return; }
+
+  status.textContent = '주문 중…'; status.style.color = 'var(--fg3)';
+  try {
+    const res = await fetch(`${KIS_WORKER}/order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, side: 'buy', orderType: orderType === '01' ? 'market' : 'limit', qty, price }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      status.style.color = 'var(--green)';
+      status.textContent = `✅ 매수 완료! 주문번호: ${data.ordNo || '—'}`;
+      document.getElementById('mock-quick-qty').value = '';
+      setTimeout(() => loadMockBalance(), 1500);
+    } else throw new Error(data.error || '주문 실패');
+  } catch(e) {
+    status.style.color = 'var(--red)';
+    status.textContent = '❌ ' + e.message;
+  }
+}
+
+// ─── 주문 모달 (스크리너·자동선별에서 매수 버튼) ───────────────
 let _orderState = { code: '', name: '', price: 0, side: 'buy', orderType: 'market', inputMode: 'qty' };
 
 window.openOrderModal = function(code, name, curr, side = 'buy') {
@@ -2860,10 +2933,10 @@ window.setOrderSide = function(side) {
   const isBuy = side === 'buy';
   document.getElementById('om-tab-buy').style.cssText = isBuy
     ? 'flex:1;padding:10px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer;background:#2563eb;color:#fff;'
-    : 'flex:1;padding:10px;border-radius:10px;border:2px solid var(--border);font-size:14px;font-weight:700;cursor:pointer;background:var(--surface1);color:var(--fg);';
+    : 'flex:1;padding:10px;border-radius:10px;border:2px solid var(--border);font-size:14px;font-weight:700;cursor:pointer;background:var(--surface2);color:var(--fg);';
   document.getElementById('om-tab-sell').style.cssText = !isBuy
     ? 'flex:1;padding:10px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer;background:#ef4444;color:#fff;'
-    : 'flex:1;padding:10px;border-radius:10px;border:2px solid var(--border);font-size:14px;font-weight:700;cursor:pointer;background:var(--surface1);color:var(--fg);';
+    : 'flex:1;padding:10px;border-radius:10px;border:2px solid var(--border);font-size:14px;font-weight:700;cursor:pointer;background:var(--surface2);color:var(--fg);';
   const btn = document.getElementById('om-submit-btn');
   btn.textContent = isBuy ? '📈 매수 주문' : '📉 매도 주문';
   btn.style.background = isBuy ? '#2563eb' : '#ef4444';
@@ -2874,10 +2947,10 @@ window.setOrderType = function(type) {
   const isMarket = type === 'market';
   document.getElementById('om-type-market').style.cssText = isMarket
     ? 'flex:1;padding:8px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;background:#2563eb;color:#fff;'
-    : 'flex:1;padding:8px;border-radius:8px;border:2px solid var(--border);font-size:13px;font-weight:600;cursor:pointer;background:var(--surface1);color:var(--fg);';
+    : 'flex:1;padding:8px;border-radius:8px;border:2px solid var(--border);font-size:13px;font-weight:600;cursor:pointer;background:var(--surface2);color:var(--fg);';
   document.getElementById('om-type-limit').style.cssText = !isMarket
     ? 'flex:1;padding:8px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;background:#2563eb;color:#fff;'
-    : 'flex:1;padding:8px;border-radius:8px;border:2px solid var(--border);font-size:13px;font-weight:600;cursor:pointer;background:var(--surface1);color:var(--fg);';
+    : 'flex:1;padding:8px;border-radius:8px;border:2px solid var(--border);font-size:13px;font-weight:600;cursor:pointer;background:var(--surface2);color:var(--fg);';
   document.getElementById('om-limit-row').hidden = isMarket;
 };
 
@@ -2886,10 +2959,10 @@ window.setInputMode = function(mode) {
   const isQty = mode === 'qty';
   document.getElementById('om-input-qty').style.cssText = isQty
     ? 'padding:4px 10px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;background:#2563eb;color:#fff;'
-    : 'padding:4px 10px;border-radius:6px;border:2px solid var(--border);font-size:12px;font-weight:600;cursor:pointer;background:var(--surface1);color:var(--fg);';
+    : 'padding:4px 10px;border-radius:6px;border:2px solid var(--border);font-size:12px;font-weight:600;cursor:pointer;background:var(--surface2);color:var(--fg);';
   document.getElementById('om-input-amt').style.cssText = !isQty
     ? 'padding:4px 10px;border-radius:6px;border:none;font-size:12px;font-weight:600;cursor:pointer;background:#2563eb;color:#fff;'
-    : 'padding:4px 10px;border-radius:6px;border:2px solid var(--border);font-size:12px;font-weight:600;cursor:pointer;background:var(--surface1);color:var(--fg);';
+    : 'padding:4px 10px;border-radius:6px;border:2px solid var(--border);font-size:12px;font-weight:600;cursor:pointer;background:var(--surface2);color:var(--fg);';
   document.getElementById('om-qty-unit').textContent = isQty ? '주' : '원';
   document.getElementById('om-qty-input').placeholder = isQty ? '주문 수량' : '투자 금액 (원)';
   updateOrderCalc();
@@ -2899,16 +2972,12 @@ window.updateOrderCalc = function() {
   const val = parseFloat(document.getElementById('om-qty-input').value) || 0;
   const limitPrice = parseFloat(document.getElementById('om-limit-price').value) || 0;
   const refPrice = _orderState.orderType === 'limit' && limitPrice > 0 ? limitPrice : _orderState.price;
-
   let qty = 0, amt = 0;
   if (_orderState.inputMode === 'qty') {
-    qty = Math.floor(val);
-    amt = qty * refPrice;
+    qty = Math.floor(val); amt = qty * refPrice;
   } else {
-    qty = refPrice > 0 ? Math.floor(val / refPrice) : 0;
-    amt = qty * refPrice;
+    qty = refPrice > 0 ? Math.floor(val / refPrice) : 0; amt = qty * refPrice;
   }
-
   document.getElementById('om-calc-qty').textContent = qty > 0 ? `${qty}주` : '—';
   document.getElementById('om-calc-amt').textContent = amt > 0 ? `${amt.toLocaleString()}원` : '—';
 };
@@ -2917,56 +2986,31 @@ window.submitOrder = async function() {
   const val = parseFloat(document.getElementById('om-qty-input').value) || 0;
   const limitPrice = parseFloat(document.getElementById('om-limit-price').value) || 0;
   const refPrice = _orderState.orderType === 'limit' && limitPrice > 0 ? limitPrice : _orderState.price;
+  let qty = _orderState.inputMode === 'qty' ? Math.floor(val) : (refPrice > 0 ? Math.floor(val / refPrice) : 0);
 
-  let qty = 0;
-  if (_orderState.inputMode === 'qty') {
-    qty = Math.floor(val);
-  } else {
-    qty = refPrice > 0 ? Math.floor(val / refPrice) : 0;
-  }
-
-  if (qty < 1) {
-    document.getElementById('om-status').textContent = '❌ 수량을 입력해주세요';
-    document.getElementById('om-status').style.color = '#ef4444';
-    return;
-  }
-  if (_orderState.orderType === 'limit' && (!limitPrice || limitPrice < 1)) {
-    document.getElementById('om-status').textContent = '❌ 지정가를 입력해주세요';
-    document.getElementById('om-status').style.color = '#ef4444';
-    return;
-  }
+  if (qty < 1) { document.getElementById('om-status').textContent = '❌ 수량을 입력해주세요'; document.getElementById('om-status').style.color = '#ef4444'; return; }
+  if (_orderState.orderType === 'limit' && (!limitPrice || limitPrice < 1)) { document.getElementById('om-status').textContent = '❌ 지정가를 입력해주세요'; document.getElementById('om-status').style.color = '#ef4444'; return; }
 
   const sideText = _orderState.side === 'buy' ? '매수' : '매도';
   const typeText = _orderState.orderType === 'market' ? '시장가' : `지정가 ${limitPrice.toLocaleString()}원`;
-  const confirmed = confirm(`[모의투자] ${_orderState.name} ${sideText}\n${typeText} · ${qty}주 주문하시겠어요?`);
-  if (!confirmed) return;
+  if (!confirm(`[모의투자] ${_orderState.name} ${sideText}\n${typeText} · ${qty}주 주문하시겠어요?`)) return;
 
   const btn = document.getElementById('om-submit-btn');
   const status = document.getElementById('om-status');
-  btn.disabled = true;
-  btn.textContent = '주문 중...';
-  status.textContent = '';
+  btn.disabled = true; btn.textContent = '주문 중...'; status.textContent = '';
 
   try {
     const res = await fetch(`${KIS_WORKER}/order`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        code: _orderState.code,
-        side: _orderState.side,
-        orderType: _orderState.orderType,
-        qty,
-        price: limitPrice,
-      }),
+      body: JSON.stringify({ code: _orderState.code, side: _orderState.side, orderType: _orderState.orderType, qty, price: limitPrice }),
     });
     const data = await res.json();
     if (data.ok) {
       status.style.color = '#22c55e';
       status.textContent = `✅ ${sideText} 완료! 주문번호: ${data.ordNo || '—'}`;
       setTimeout(closeOrderModal, 2000);
-    } else {
-      throw new Error(data.error || '주문 실패');
-    }
+    } else throw new Error(data.error || '주문 실패');
   } catch(e) {
     status.style.color = '#ef4444';
     status.textContent = '❌ ' + e.message;
@@ -2976,29 +3020,27 @@ window.submitOrder = async function() {
   }
 };
 
-// 모달 배경 클릭 시 닫기
 document.getElementById('order-modal-overlay').addEventListener('click', function(e) {
   if (e.target === this) closeOrderModal();
 });
-
-// 지정가 변경 시 계산 업데이트
-document.getElementById('om-limit-price').addEventListener('input', updateOrderCalc);
-
 // ─── Init ────────────────────────────────────────────────────
 renderScreener();
 renderPositions();
 renderHoldings();
 renderJournalList();
-renderFavorites();
 
 // ═══════════════════════════════════════════════════════════
 // HOME 탭 – 시장 지수·수급·업종
 // ═══════════════════════════════════════════════════════════
 let homeLoaded = false;
+let homeLoadedAt = 0;
+const HOME_CACHE_MS = 5 * 60 * 1000; // 5분
 
 async function loadHomeData(force) {
-  if (homeLoaded && !force) return;
+  const now = Date.now();
+  if (homeLoaded && !force && (now - homeLoadedAt) < HOME_CACHE_MS) return;
   homeLoaded = true;
+  homeLoadedAt = now;
 
   // 로딩 표시 (배너도 리셋)
   const banner = document.getElementById('market-regime-banner');
