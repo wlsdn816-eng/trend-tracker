@@ -1331,7 +1331,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById('panel-' + tab).classList.add('active');
-    if (tab === 'home') loadHomeData();
+    if (tab === 'home') loadHomeData(true); // 탭 클릭 시 항상 새로고침
   });
 });
 
@@ -3000,7 +3000,18 @@ async function loadHomeData(force) {
   if (homeLoaded && !force) return;
   homeLoaded = true;
 
-  // 로딩 표시
+  // 로딩 표시 (배너도 리셋)
+  const banner = document.getElementById('market-regime-banner');
+  const icon   = document.getElementById('regime-icon');
+  const label  = document.getElementById('regime-label');
+  const detail = document.getElementById('regime-detail');
+  const ma60el = document.getElementById('regime-ma60');
+  if (icon)   icon.textContent  = '⏳';
+  if (label)  label.textContent = '장세 확인 중…';
+  if (detail) detail.textContent = '';
+  if (ma60el) ma60el.textContent = '-';
+  if (banner) { banner.style.background = 'var(--surface2)'; banner.style.borderColor = 'var(--border)'; }
+
   const invBody = document.getElementById('home-investor-body');
   const sectorGrid = document.getElementById('home-sector-grid');
   const leaderEl = document.getElementById('home-leader-list');
