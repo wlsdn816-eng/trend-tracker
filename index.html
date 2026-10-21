@@ -2919,7 +2919,8 @@ async function loadMockOrders() {
     });
   }
 
-  document.addEventListener('DOMContentLoaded', bindMockSearch);
+  // 인라인 스크립트는 DOM 파싱 완료 후 실행되므로 직접 호출
+  bindMockSearch();
 })();
 
 function selectMockQuickStock(code, name) {
