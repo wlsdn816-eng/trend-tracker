@@ -1178,7 +1178,7 @@
             <div id="mock-quick-dropdown" class="search-dropdown" style="display:none;"></div>
           </div>
           <input type="hidden" id="mock-quick-code">
-          <div id="mock-quick-selected" style="display:none;margin-top:6px;padding:6px 10px;background:var(--accent-soft);border-radius:8px;font-size:12px;display:flex;align-items:center;justify-content:space-between;">
+          <div id="mock-quick-selected" hidden style="margin-top:6px;padding:6px 10px;background:var(--accent-soft);border-radius:8px;font-size:12px;display:flex;align-items:center;justify-content:space-between;">
             <span id="mock-quick-selected-label" style="font-weight:600;color:var(--accent);"></span>
             <button type="button" onclick="clearMockQuickStock()" style="background:none;border:none;cursor:pointer;color:var(--fg3);font-size:14px;line-height:1;padding:0 2px;">✕</button>
           </div>
@@ -2897,20 +2897,28 @@ async function loadMockOrders() {
       const q = inp.value.trim();
       if (!q) { drop.style.display = 'none'; return; }
       _searchTimer = setTimeout(async () => {
-        const results = await searchKisStocks(q);
-        if (!results.length) { drop.style.display = 'none'; return; }
         drop.style.display = 'block';
-        drop.innerHTML = results.slice(0, 8).map(r =>
-          `<div class="search-item" data-code="${r.code}" data-name="${r.name}">
-            <span class="search-item-name">${r.name}</span>
-            <span class="search-item-meta">${r.code}</span>
-          </div>`
-        ).join('');
-        drop.querySelectorAll('.search-item').forEach(el => {
-          el.addEventListener('click', () => {
-            selectMockQuickStock(el.dataset.code, el.dataset.name);
+        drop.innerHTML = '<div class="search-msg">🔍 검색 중…</div>';
+        try {
+          const results = await searchKisStocks(q);
+          if (!results.length) {
+            drop.innerHTML = '<div class="search-msg">검색 결과 없음</div>';
+            return;
+          }
+          drop.innerHTML = results.slice(0, 8).map(r =>
+            `<div class="search-item" data-code="${r.code}" data-name="${r.name}">
+              <span class="search-item-name">${r.name}</span>
+              <span class="search-item-meta">${r.code}</span>
+            </div>`
+          ).join('');
+          drop.querySelectorAll('.search-item').forEach(el => {
+            el.addEventListener('click', () => {
+              selectMockQuickStock(el.dataset.code, el.dataset.name);
+            });
           });
-        });
+        } catch(e) {
+          drop.innerHTML = `<div class="search-msg" style="color:var(--red);">❌ ${e.message}</div>`;
+        }
       }, 250);
     });
 
@@ -2927,15 +2935,14 @@ function selectMockQuickStock(code, name) {
   document.getElementById('mock-quick-code').value = code;
   document.getElementById('mock-quick-search').value = '';
   document.getElementById('mock-quick-dropdown').style.display = 'none';
-  const sel = document.getElementById('mock-quick-selected');
   document.getElementById('mock-quick-selected-label').textContent = `${name}  ${code}`;
-  sel.style.display = 'flex';
+  document.getElementById('mock-quick-selected').hidden = false;
 }
 
 function clearMockQuickStock() {
   document.getElementById('mock-quick-code').value = '';
   document.getElementById('mock-quick-search').value = '';
-  document.getElementById('mock-quick-selected').style.display = 'none';
+  document.getElementById('mock-quick-selected').hidden = true;
 }
 
 function toggleMockMarketOrder(cb) {
