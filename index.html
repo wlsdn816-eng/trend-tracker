@@ -1170,25 +1170,32 @@
         <span style="font-size:11px;color:var(--fg3);">스크리너에서 매수 버튼으로도 접근 가능</span>
       </div>
       <div class="card">
+        <!-- 종목명 검색 -->
         <div class="form-group">
-          <label class="form-label">종목코드</label>
-          <input type="text" class="form-input" id="mock-quick-code" placeholder="005930" maxlength="6" inputmode="numeric"
-            style="font-family:'JetBrains Mono',monospace;letter-spacing:1px;"
-            oninput="this.value=this.value.replace(/\D/g,'')">
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">주문 종류</label>
-            <select class="form-input" id="mock-quick-type">
-              <option value="01">시장가</option>
-              <option value="00">지정가</option>
-            </select>
+          <label class="form-label">종목명 검색</label>
+          <div class="search-wrap" style="margin-bottom:0;">
+            <input type="text" class="form-input" id="mock-quick-search" placeholder="삼성전자, SK하이닉스…" autocomplete="off">
+            <div id="mock-quick-dropdown" class="search-dropdown" style="display:none;"></div>
           </div>
-          <div class="form-group" id="mock-quick-price-group" style="display:none;">
+          <input type="hidden" id="mock-quick-code">
+          <div id="mock-quick-selected" style="display:none;margin-top:6px;padding:6px 10px;background:var(--accent-soft);border-radius:8px;font-size:12px;display:flex;align-items:center;justify-content:space-between;">
+            <span id="mock-quick-selected-label" style="font-weight:600;color:var(--accent);"></span>
+            <button type="button" onclick="clearMockQuickStock()" style="background:none;border:none;cursor:pointer;color:var(--fg3);font-size:14px;line-height:1;padding:0 2px;">✕</button>
+          </div>
+        </div>
+
+        <!-- 지정가 + 시장가 체크박스 -->
+        <div class="form-row" style="align-items:flex-end;gap:10px;">
+          <div class="form-group" id="mock-quick-price-group" style="flex:1;margin-bottom:0;">
             <label class="form-label">지정가 (원)</label>
             <input type="number" class="form-input" id="mock-quick-price" placeholder="50000" inputmode="numeric">
           </div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--fg2);cursor:pointer;padding-bottom:10px;white-space:nowrap;">
+            <input type="checkbox" id="mock-quick-market" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;" onchange="toggleMockMarketOrder(this)">
+            시장가
+          </label>
         </div>
+
         <div class="form-group">
           <label class="form-label">수량 (주)</label>
           <input type="number" class="form-input" id="mock-quick-qty" placeholder="10" min="1" inputmode="numeric">
@@ -2876,33 +2883,101 @@ async function loadMockOrders() {
   }
 }
 
-document.getElementById('mock-quick-type').addEventListener('change', function() {
-  document.getElementById('mock-quick-price-group').style.display = this.value === '00' ? 'block' : 'none';
-});
+// ─── 모의투자 주문폼: 종목명 검색 자동완성 ───────────────────────
+(function() {
+  let _searchTimer;
+
+  function bindMockSearch() {
+    const inp = document.getElementById('mock-quick-search');
+    const drop = document.getElementById('mock-quick-dropdown');
+    if (!inp) return;
+
+    inp.addEventListener('input', () => {
+      clearTimeout(_searchTimer);
+      const q = inp.value.trim();
+      if (!q) { drop.style.display = 'none'; return; }
+      _searchTimer = setTimeout(async () => {
+        const results = await searchKisStocks(q);
+        if (!results.length) { drop.style.display = 'none'; return; }
+        drop.style.display = 'block';
+        drop.innerHTML = results.slice(0, 8).map(r =>
+          `<div class="search-item" data-code="${r.code}" data-name="${r.name}">
+            <span class="search-item-name">${r.name}</span>
+            <span class="search-item-meta">${r.code}</span>
+          </div>`
+        ).join('');
+        drop.querySelectorAll('.search-item').forEach(el => {
+          el.addEventListener('click', () => {
+            selectMockQuickStock(el.dataset.code, el.dataset.name);
+          });
+        });
+      }, 250);
+    });
+
+    document.addEventListener('click', e => {
+      if (!inp.closest('.search-wrap').contains(e.target)) drop.style.display = 'none';
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', bindMockSearch);
+})();
+
+function selectMockQuickStock(code, name) {
+  document.getElementById('mock-quick-code').value = code;
+  document.getElementById('mock-quick-search').value = '';
+  document.getElementById('mock-quick-dropdown').style.display = 'none';
+  const sel = document.getElementById('mock-quick-selected');
+  document.getElementById('mock-quick-selected-label').textContent = `${name}  ${code}`;
+  sel.style.display = 'flex';
+}
+
+function clearMockQuickStock() {
+  document.getElementById('mock-quick-code').value = '';
+  document.getElementById('mock-quick-search').value = '';
+  document.getElementById('mock-quick-selected').style.display = 'none';
+}
+
+function toggleMockMarketOrder(cb) {
+  const priceGroup = document.getElementById('mock-quick-price-group');
+  const priceInput = document.getElementById('mock-quick-price');
+  if (cb.checked) {
+    priceGroup.style.opacity = '0.4';
+    priceInput.disabled = true;
+    priceInput.placeholder = '시장가 주문';
+  } else {
+    priceGroup.style.opacity = '1';
+    priceInput.disabled = false;
+    priceInput.placeholder = '50000';
+  }
+}
 
 async function submitMockQuickOrder() {
   const code = document.getElementById('mock-quick-code').value.trim();
-  const orderType = document.getElementById('mock-quick-type').value;
+  const isMarket = document.getElementById('mock-quick-market').checked;
   const price = parseFloat(document.getElementById('mock-quick-price').value) || 0;
   const qty = parseInt(document.getElementById('mock-quick-qty').value) || 0;
   const status = document.getElementById('mock-quick-status');
 
-  if (!code || code.length !== 6) { status.textContent = '❌ 종목코드 6자리를 입력하세요'; status.style.color = 'var(--red)'; return; }
+  if (!code || code.length !== 6) { status.textContent = '❌ 종목을 선택하세요'; status.style.color = 'var(--red)'; return; }
   if (qty < 1) { status.textContent = '❌ 수량을 입력하세요'; status.style.color = 'var(--red)'; return; }
-  if (orderType === '00' && price < 1) { status.textContent = '❌ 지정가를 입력하세요'; status.style.color = 'var(--red)'; return; }
+  if (!isMarket && price < 1) { status.textContent = '❌ 지정가를 입력하세요'; status.style.color = 'var(--red)'; return; }
 
   status.textContent = '주문 중…'; status.style.color = 'var(--fg3)';
   try {
     const res = await fetch(`${KIS_WORKER}/order`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, side: 'buy', orderType: orderType === '01' ? 'market' : 'limit', qty, price }),
+      body: JSON.stringify({ code, side: 'buy', orderType: isMarket ? 'market' : 'limit', qty, price }),
     });
     const data = await res.json();
     if (data.ok) {
       status.style.color = 'var(--green)';
       status.textContent = `✅ 매수 완료! 주문번호: ${data.ordNo || '—'}`;
       document.getElementById('mock-quick-qty').value = '';
+      document.getElementById('mock-quick-price').value = '';
+      clearMockQuickStock();
+      document.getElementById('mock-quick-market').checked = false;
+      toggleMockMarketOrder(document.getElementById('mock-quick-market'));
       setTimeout(() => loadMockBalance(), 1500);
     } else throw new Error(data.error || '주문 실패');
   } catch(e) {
