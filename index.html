@@ -2218,8 +2218,13 @@ window.deleteHolding = (i) => {
 // 2순위: 실시간 조회 (/quotes) — KV에 데이터 없을 때만
 let lastFetchedAt   = '';
 let lastFetchedTime = ''; // HH:MM (KST)
-async function loadHoldingPrices() {
+let holdingPriceLoadedAt = 0;
+const HOLDING_PRICE_TTL = 5 * 60 * 1000; // 5분
+async function loadHoldingPrices(force) {
   if (!holdings.length) return;
+  const now = Date.now();
+  if (!force && holdingPriceLoadedAt && (now - holdingPriceLoadedAt) < HOLDING_PRICE_TTL) return;
+  holdingPriceLoadedAt = now;
   const codes = holdings.map(h => h.code).filter(Boolean);
   if (!codes.length) return;
 
@@ -3282,6 +3287,10 @@ function renderHomeSector(data) {
   }).join('');
 }
 
+// 업종 종목 시세 캐시 — { [sectorCode]: { quotes, cachedAt } }
+const _sectorQuoteCache = {};
+const SECTOR_QUOTE_TTL = 5 * 60 * 1000; // 5분
+
 // 업종 클릭 → 대표 종목 목록 표시 오버레이
 window.openSectorDetail = async function(sectorCode, sectorName) {
   const overlay = document.getElementById('detail-overlay');
@@ -3291,7 +3300,6 @@ window.openSectorDetail = async function(sectorCode, sectorName) {
   document.getElementById('dt-code').textContent  = '업종 ' + sectorCode;
   document.getElementById('dt-price').textContent = '';
   document.getElementById('dt-chg').textContent   = '';
-  body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--fg3);">업종 종목 로딩 중…</div>';
   overlay.hidden = false;
 
   // 대표 종목 목록 ({c:코드, n:종목명} 구조)
@@ -3301,9 +3309,18 @@ window.openSectorDetail = async function(sectorCode, sectorName) {
     return;
   }
 
-  // 코드→종목명 맵 (API 실패시 폴백용)
   const nameMap = {};
   stockList.forEach(s => { nameMap[s.c] = s.n; });
+
+  // 5분 캐시 확인 — 캐시가 있으면 API 호출 없이 즉시 렌더링
+  const now = Date.now();
+  const cached = _sectorQuoteCache[sectorCode];
+  if (cached && (now - cached.cachedAt) < SECTOR_QUOTE_TTL) {
+    renderSectorBody(body, stockList, nameMap, cached.quotes);
+    return;
+  }
+
+  body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--fg3);">업종 종목 로딩 중…</div>';
   const codeStr = stockList.map(s => s.c).join(',');
 
   try {
@@ -3312,30 +3329,10 @@ window.openSectorDetail = async function(sectorCode, sectorName) {
     if (data.error) { body.innerHTML = `<p style="color:var(--red);padding:20px;">${data.error}</p>`; return; }
 
     const quotes = data.quotes || [];
-    // API 응답이 없는 종목은 하드코딩 데이터로 채움
-    const rendered = stockList.map(s => {
-      const q = quotes.find(x => x.code === s.c) || { code: s.c, curr: 0, chg: 0 };
-      const displayName = q.name || nameMap[s.c] || s.c;
-      const cs = colorStyle(q.chg || 0);
-      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border);cursor:pointer;" onclick="closeDetailModal();setTimeout(()=>openStockDetail('${s.c}','${displayName}'),80)">
-        <div>
-          <div style="font-size:14px;font-weight:600;">${displayName}</div>
-          <div style="font-size:11px;color:var(--fg3);">${s.c}</div>
-        </div>
-        <div style="text-align:right;">
-          <div style="font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;${cs}">${q.curr ? (q.curr).toLocaleString('ko-KR') : '-'}</div>
-          <div style="font-size:12px;font-family:'JetBrains Mono',monospace;${cs}">${q.chg ? signStr(q.chg)+(q.chg).toFixed(2)+'%' : '-'}</div>
-        </div>
-      </div>`;
-    });
-
-    body.innerHTML = `
-      <div style="padding:4px 0 12px;">
-        <div style="font-size:12px;color:var(--fg3);margin-bottom:12px;">대표 종목 현재가</div>
-        ${rendered.join('')}
-      </div>`;
+    // 캐시 저장
+    _sectorQuoteCache[sectorCode] = { quotes, cachedAt: now };
+    renderSectorBody(body, stockList, nameMap, quotes);
   } catch(e) {
-    // API 실패해도 종목명은 하드코딩에서 표시
     body.innerHTML = `
       <div style="padding:4px 0 12px;">
         <div style="font-size:12px;color:var(--red);margin-bottom:12px;">시세 로딩 실패 — 종목 목록만 표시</div>
@@ -3349,6 +3346,29 @@ window.openSectorDetail = async function(sectorCode, sectorName) {
       </div>`;
   }
 };
+
+function renderSectorBody(body, stockList, nameMap, quotes) {
+  const rendered = stockList.map(s => {
+    const q = quotes.find(x => x.code === s.c) || { code: s.c, curr: 0, chg: 0 };
+    const displayName = q.name || nameMap[s.c] || s.c;
+    const cs = colorStyle(q.chg || 0);
+    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border);cursor:pointer;" onclick="closeDetailModal();setTimeout(()=>openStockDetail('${s.c}','${displayName}'),80)">
+      <div>
+        <div style="font-size:14px;font-weight:600;">${displayName}</div>
+        <div style="font-size:11px;color:var(--fg3);">${s.c}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;${cs}">${q.curr ? (q.curr).toLocaleString('ko-KR') : '-'}</div>
+        <div style="font-size:12px;font-family:'JetBrains Mono',monospace;${cs}">${q.chg ? signStr(q.chg)+(q.chg).toFixed(2)+'%' : '-'}</div>
+      </div>
+    </div>`;
+  });
+  body.innerHTML = `
+    <div style="padding:4px 0 12px;">
+      <div style="font-size:12px;color:var(--fg3);margin-bottom:12px;">대표 종목 현재가</div>
+      ${rendered.join('')}
+    </div>`;
+}
 
 // ═══════════════════════════════════════════════════════════
 // 종목 상세창
@@ -3522,9 +3542,15 @@ function buildCandleChart(bars) {
   return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block;max-width:100%;">${svgBody}</svg>`;
 }
 
-// ─── 모든 탭에서 종목명에 클릭 핸들러 연결 ─────────────────
-// 앱 최초 진입 시 home이 기본 탭이므로 바로 데이터 로드
-loadHomeData();
+// ─── 앱 초기화: 토큰 1회 워밍업 후 홈 데이터 로드 ──────────
+// Worker KV에 토큰을 미리 캐싱해두면,
+// loadHomeData()의 4개 동시 요청이 KV 캐시를 재사용하여 추가 발급 없음
+(async () => {
+  try {
+    await fetch(`${KIS_WORKER}/token`); // 토큰 1회 발급 + KV 저장
+  } catch(_) { /* 워밍업 실패해도 loadHomeData는 진행 */ }
+  loadHomeData();
+})();
 
 // renderScreener, renderPositions 등의 종목 행에 onclick 추가를 위해
 // 각 렌더 함수에서 stock-link 클래스 사용 → 위임 처리
