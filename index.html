@@ -2437,7 +2437,7 @@ function positionFormHtml(p = {}) {
   `;
 }
 
-document.getElementById('btn-add-position').addEventListener('click', () => {
+document.getElementById('btn-add-position')?.addEventListener('click', () => {
   openModal('포지션 추가', positionFormHtml(), null);
   document.getElementById('pf-submit').onclick = () => {
     const p = {
@@ -3060,7 +3060,7 @@ window.deleteJournalEntry = (i) => {
 function renderJournal() { renderJournalList(); }
 
 // ─── 자동선별 탭 ────────────────────────────────────────────
-let scanMode = 'basic';
+var scanMode = 'basic';
 
 function setScanMode(mode) {
   scanMode = mode;
@@ -3563,8 +3563,8 @@ renderJournalList();
 // ═══════════════════════════════════════════════════════════
 // HOME 탭 – 시장 지수·수급·업종
 // ═══════════════════════════════════════════════════════════
-let homeLoaded = false;
-let homeLoadedAt = 0;
+var homeLoaded = false;
+var homeLoadedAt = 0;
 const HOME_CACHE_MS = 5 * 60 * 1000; // 5분
 
 async function loadHomeData(force) {
