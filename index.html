@@ -956,7 +956,7 @@
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">시드머니 (원)</label>
-            <input type="number" class="form-input" id="kt-seed" placeholder="100,000,000" inputmode="numeric">
+            <input type="text" class="form-input" id="kt-seed" placeholder="10,000,000" inputmode="numeric">
           </div>
           <div class="form-group">
             <label class="form-label">리스크 R (%)</label>
@@ -1976,7 +1976,7 @@ const KT_UNIT_KEY = 'kt_units';
   const r = localStorage.getItem(KT_RISK_KEY);
   const sp = localStorage.getItem(KT_STOP_KEY);
   const u = localStorage.getItem(KT_UNIT_KEY);
-  if (s) document.getElementById('kt-seed').value = s;
+  if (s) { const n = +s; document.getElementById('kt-seed').value = n ? fmtComma(n) : s; }
   if (r) document.getElementById('kt-risk').value = r;
   if (sp) document.getElementById('kt-stoppct').value = sp;
   if (u) document.getElementById('kt-units').value = u;
@@ -1988,7 +1988,7 @@ const KT_UNIT_KEY = 'kt_units';
 ['kt-seed','kt-risk','kt-stoppct','kt-units'].forEach(id => {
   const el = document.getElementById(id);
   if (el) el.addEventListener('change', () => {
-    if (id === 'kt-seed')    localStorage.setItem(KT_SEED_KEY, el.value);
+    if (id === 'kt-seed')    localStorage.setItem(KT_SEED_KEY, el.value.replace(/,/g,''));
     if (id === 'kt-risk')    localStorage.setItem(KT_RISK_KEY, el.value);
     if (id === 'kt-stoppct') localStorage.setItem(KT_STOP_KEY, el.value);
     if (id === 'kt-units')   localStorage.setItem(KT_UNIT_KEY, el.value);
@@ -1996,12 +1996,25 @@ const KT_UNIT_KEY = 'kt_units';
   });
 });
 document.getElementById('kt-seed').addEventListener('input', () => {
-  localStorage.setItem(KT_SEED_KEY, document.getElementById('kt-seed').value);
+  const el = document.getElementById('kt-seed');
+  const raw = el.value.replace(/,/g, '');
+  const num = parseInt(raw, 10);
+  if (!isNaN(num)) {
+    const pos = el.selectionStart;
+    const prevLen = el.value.length;
+    el.value = fmtComma(num);
+    const diff = el.value.length - prevLen;
+    el.setSelectionRange(pos + diff, pos + diff);
+    localStorage.setItem(KT_SEED_KEY, String(num));
+  } else if (raw === '' || raw === '-') {
+    el.value = raw;
+    localStorage.setItem(KT_SEED_KEY, '');
+  }
   ktUpdateUnitSummary();
 });
 
 function ktGetSettings() {
-  const seed      = +document.getElementById('kt-seed').value || 0;
+  const seed      = +(document.getElementById('kt-seed').value.replace(/,/g,'')) || 0;
   const riskPct   = +document.getElementById('kt-risk').value || 2;
   const stopPct   = +document.getElementById('kt-stoppct').value || 8;
   const unitCnt   = +document.getElementById('kt-units').value || 3;
@@ -2039,9 +2052,10 @@ function ktUpdateUnitSummary() {
     const recBadge = isRec
       ? `<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:${ktMarketBull===true?'var(--green-soft)':'var(--orange-soft)'};color:${labelColor};font-weight:700;margin-left:6px;">${ktMarketBull===true?'강세 추천':'약세 추천'}</span>`
       : '';
+    const thisAmt = unitAmt * u;
     rows.push(`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--surface1);border-radius:8px;border:${borderStyle};">
       <span style="font-size:13px;font-weight:700;">${u}유닛${recBadge}</span>
-      <span style="font-size:14px;font-weight:700;color:${labelColor};">${fmtComma(Math.round(unitAmt))}원</span>
+      <span style="font-size:14px;font-weight:700;color:${labelColor};">${fmtComma(Math.round(thisAmt))}원</span>
     </div>`);
   }
   tableEl.innerHTML = `
@@ -2188,6 +2202,7 @@ function ktCalculate() {
     recBg = 'rgba(100,100,100,0.08)';
     recMsg = '❓ 장세 데이터 없음 — <b>1유닛</b> 진입 권장';
   }
+  const recAmt = unitAmt * recUnit;
   recBox.style.background = recBg;
   recBox.style.border = `1px solid ${recColor}`;
   recBox.style.borderRadius = '10px';
