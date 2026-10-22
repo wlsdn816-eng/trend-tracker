@@ -1717,12 +1717,22 @@ async function fetchKisData(ticker) {
 // 종목명 검색 (Worker 내장 DB)
 async function searchKisStocks(q) {
   if (!q || q.length < 1) return [];
-  const res = await fetch(`${KIS_WORKER}/search?q=${encodeURIComponent(q)}`, {
-    signal: AbortSignal.timeout(5000),
-  });
-  if (!res.ok) return [];
-  const d = await res.json();
-  return d.results || [];
+  try {
+    const res = await fetch(`${KIS_WORKER}/search?q=${encodeURIComponent(q)}`, {
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      console.warn(`[search] HTTP ${res.status} for "${q}":`, txt.slice(0, 200));
+      throw new Error(`검색 오류 (${res.status})`);
+    }
+    const d = await res.json();
+    console.log(`[search] "${q}" →`, d.results?.length ?? 0, '건');
+    return d.results || [];
+  } catch(e) {
+    console.error('[search] 검색 실패:', e.message);
+    throw e;
+  }
 }
 
 function screenerFormHtml(s = {}) {
@@ -1810,7 +1820,12 @@ function bindFetchBtn() {
       const q = searchInput.value.trim();
       if (q.length < 1) { searchResults.style.display = 'none'; return; }
       searchTimer = setTimeout(async () => {
-        const results = await searchKisStocks(q);
+        let results;
+        try { results = await searchKisStocks(q); } catch(e) {
+          searchResults.style.display = 'block';
+          searchResults.innerHTML = `<div style="padding:8px 12px;font-size:13px;color:var(--red);">❌ ${e.message}</div>`;
+          return;
+        }
         if (!results.length) { searchResults.style.display = 'none'; return; }
         searchResults.style.display = 'block';
         searchResults.innerHTML = results.map(r =>
