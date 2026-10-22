@@ -836,22 +836,20 @@
           </div>
         </div>
 
-        <!-- 업종 그리드 -->
-        <div class="index-card">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <div style="font-size:12px;font-weight:700;color:var(--fg3);letter-spacing:.04em;">오늘의 업종</div>
-            <div style="font-size:11px;color:var(--fg3);" id="home-sector-time"></div>
+        <!-- 피드 섹션 -->
+        <div class="index-card" style="padding:0;overflow:hidden;">
+          <!-- 탭 헤더 -->
+          <div style="display:flex;border-bottom:1px solid var(--border);">
+            <button id="feed-tab-blog" onclick="switchFeedTab('blog')" style="flex:1;padding:10px 0;background:none;border:none;font-size:12px;font-weight:700;color:var(--accent);border-bottom:2px solid var(--accent);cursor:pointer;letter-spacing:.03em;">📝 블로그</button>
+            <button id="feed-tab-research" onclick="switchFeedTab('research')" style="flex:1;padding:10px 0;background:none;border:none;font-size:12px;font-weight:700;color:var(--fg3);border-bottom:2px solid transparent;cursor:pointer;letter-spacing:.03em;">📊 리서치</button>
           </div>
-          <div class="sector-grid" id="home-sector-grid">
-            <div style="color:var(--fg3);font-size:13px;text-align:center;padding:20px 0;grid-column:1/-1;">데이터 로딩 중…</div>
+          <!-- 블로그 피드 -->
+          <div id="feed-panel-blog" style="padding:4px 0;">
+            <div id="feed-list-blog" style="padding:8px 14px;color:var(--fg3);font-size:13px;">로딩 중…</div>
           </div>
-        </div>
-
-        <!-- 주도주 (상위 종목) -->
-        <div class="index-card">
-          <div style="font-size:12px;font-weight:700;color:var(--fg3);margin-bottom:10px;letter-spacing:.04em;">오늘의 주도주</div>
-          <div id="home-leader-list">
-            <div style="color:var(--fg3);font-size:13px;text-align:center;padding:20px 0;">데이터 로딩 중…</div>
+          <!-- 리서치 피드 -->
+          <div id="feed-panel-research" style="display:none;padding:4px 0;">
+            <div id="feed-list-research" style="padding:8px 14px;color:var(--fg3);font-size:13px;">로딩 중…</div>
           </div>
         </div>
 
@@ -3660,11 +3658,7 @@ async function loadHomeData(force) {
   if (banner) { banner.style.background = 'var(--surface2)'; banner.style.borderColor = 'var(--border)'; }
 
   const invBody = document.getElementById('home-investor-body');
-  const sectorGrid = document.getElementById('home-sector-grid');
-  const leaderEl = document.getElementById('home-leader-list');
-  if (invBody)    invBody.innerHTML    = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;">로딩 중…</div>';
-  if (sectorGrid) sectorGrid.innerHTML = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;grid-column:1/-1;">로딩 중…</div>';
-  if (leaderEl)   leaderEl.innerHTML   = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;">로딩 중…</div>';
+  if (invBody) invBody.innerHTML = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;">로딩 중…</div>';
 
   // 동시 4개 요청 (장세 배너 포함)
   const [idxRes, invRes, secRes, maRes] = await Promise.allSettled([
@@ -3691,15 +3685,11 @@ async function loadHomeData(force) {
     if (invBody) invBody.innerHTML = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;">수급 데이터를 불러올 수 없습니다.</div>';
   }
 
-  if (sec) {
-    renderHomeSector(sec);
-  } else {
-    if (sectorGrid) sectorGrid.innerHTML = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;grid-column:1/-1;">업종 데이터를 불러올 수 없습니다.</div>';
-    if (leaderEl)   leaderEl.innerHTML   = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;">주도주 데이터를 불러올 수 없습니다.</div>';
-  }
-
   document.getElementById('home-update-time').textContent =
     '업데이트: ' + new Date().toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit' });
+
+  // 피드 로드 (비동기, 독립적으로 실행)
+  loadHomeFeed();
 }
 
 function colorStyle(v) {
@@ -3853,6 +3843,74 @@ const SECTOR_STOCKS = {
   '1025':[{c:'035420',n:'NAVER'},{c:'035720',n:'카카오'},{c:'047560',n:'카카오뱅크'},{c:'030520',n:'넥슨게임즈'},{c:'053800',n:'안랩'}],
   '1027':[{c:'000660',n:'SK하이닉스'},{c:'293490',n:'카카오페이'},{c:'240810',n:'원익IPS'},{c:'088980',n:'맥쿼리인프라'},{c:'054620',n:'APS홀딩스'}],
 };
+
+// ─────────────────────────────────────────────
+// 홈탭 피드 (블로그 + 리서치)
+// ─────────────────────────────────────────────
+var _feedLoaded = { blog: false, research: false };
+var _currentFeedTab = 'blog';
+
+function switchFeedTab(tab) {
+  _currentFeedTab = tab;
+  const tabs = ['blog','research'];
+  tabs.forEach(t => {
+    const btn = document.getElementById('feed-tab-' + t);
+    const panel = document.getElementById('feed-panel-' + t);
+    if (t === tab) {
+      btn.style.color = 'var(--accent)';
+      btn.style.borderBottom = '2px solid var(--accent)';
+      if (panel) panel.style.display = '';
+    } else {
+      btn.style.color = 'var(--fg3)';
+      btn.style.borderBottom = '2px solid transparent';
+      if (panel) panel.style.display = 'none';
+    }
+  });
+  if (!_feedLoaded[tab]) loadFeedData(tab);
+}
+
+async function loadHomeFeed() {
+  if (!_feedLoaded['blog']) loadFeedData('blog');
+}
+
+async function loadFeedData(type) {
+  _feedLoaded[type] = true;
+  const listEl = document.getElementById('feed-list-' + type);
+  if (!listEl) return;
+  listEl.innerHTML = '<div style="color:var(--fg3);font-size:13px;padding:8px 0;">로딩 중…</div>';
+
+  try {
+    const url = `${KIS_WORKER}/${type === 'blog' ? 'blog-feed' : 'research-feed'}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const items = data.items || [];
+    if (!items.length) {
+      listEl.innerHTML = '<div style="color:var(--fg3);font-size:13px;padding:8px 0;">최근 게시물이 없습니다.</div>';
+      return;
+    }
+    listEl.innerHTML = items.map(item => renderFeedItem(item, type)).join('');
+  } catch(e) {
+    listEl.innerHTML = `<div style="color:var(--fg3);font-size:12px;padding:8px 0;">불러오기 실패: ${e.message}<br><button onclick="loadFeedData('${type}')" style="margin-top:6px;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;color:var(--fg);">다시 시도</button></div>`;
+    _feedLoaded[type] = false;
+  }
+}
+
+function renderFeedItem(item, type) {
+  const dateStr = item.date ? `<span style="font-size:11px;color:var(--fg3);flex-shrink:0;">${item.date}</span>` : '';
+  const badge = type === 'research'
+    ? `<span style="font-size:10px;background:var(--accent);color:#fff;border-radius:4px;padding:1px 5px;margin-right:6px;vertical-align:middle;">${item.company || '리서치'}</span>`
+    : '';
+  return `<a href="${item.link || '#'}" target="_blank" rel="noopener" style="display:block;text-decoration:none;padding:11px 14px;border-bottom:1px solid var(--border);">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+      <div style="min-width:0;flex:1;">
+        <div style="font-size:13px;font-weight:600;color:var(--fg);line-height:1.4;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${badge}${item.title || '(제목 없음)'}</div>
+        ${item.summary ? `<div style="font-size:11px;color:var(--fg3);margin-top:3px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">${item.summary}</div>` : ''}
+      </div>
+      ${dateStr}
+    </div>
+  </a>`;
+}
 
 function renderHomeSector(data) {
   const grid = document.getElementById('home-sector-grid');
