@@ -983,19 +983,19 @@
           </div>
         </div>
 
-        <!-- 장세 연동 배너 -->
-        <div id="kt-regime-banner" style="border-radius:10px;padding:10px 14px;margin-top:10px;display:flex;align-items:center;gap:10px;font-size:13px;background:rgba(100,100,100,0.08);border:1px solid rgba(100,100,100,0.2);">
-          <span id="kt-regime-icon" style="font-size:16px;">⏳</span>
-          <div>
-            <div style="font-weight:700;" id="kt-regime-label">장세 확인 중…</div>
-            <div style="font-size:11px;color:var(--fg3);margin-top:1px;" id="kt-regime-sub"></div>
-          </div>
-        </div>
-
         <!-- 유닛별 포지션 사이즈 요약 -->
         <div id="kt-unit-summary" style="margin-top:14px;display:none;">
           <div style="font-size:12px;font-weight:700;color:var(--fg2);margin-bottom:8px;">📊 유닛별 포지션 사이즈</div>
           <div id="kt-unit-table" style="display:flex;flex-direction:column;gap:6px;"></div>
+
+          <!-- 장세 연동 배너 (유닛 요약 바로 아래) -->
+          <div id="kt-regime-banner" style="border-radius:10px;padding:10px 14px;margin-top:10px;display:flex;align-items:center;gap:10px;font-size:13px;background:rgba(100,100,100,0.08);border:1px solid rgba(100,100,100,0.2);">
+            <span id="kt-regime-icon" style="font-size:16px;">⏳</span>
+            <div>
+              <div style="font-weight:700;" id="kt-regime-label">장세 확인 중…</div>
+              <div style="font-size:11px;color:var(--fg3);margin-top:1px;" id="kt-regime-sub"></div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1080,18 +1080,17 @@
 
           <!-- +3R 도달 시 유닛 조정 추천 -->
           <div id="kt-next-unit-box" style="margin-top:12px;border-radius:10px;padding:10px 14px;font-size:12px;background:var(--accent-soft);display:none;"></div>
+
+          <!-- 포지션 저장 버튼 -->
+          <button class="btn btn-primary" onclick="ktSavePosition()" style="width:100%;margin-top:14px;">💾 포지션 저장</button>
         </div>
       </div>
 
-      <!-- 보유 포지션 목록 (기존 유지) -->
+      <!-- 저장된 포지션 목록 -->
       <div class="section-head" style="margin-top:8px;">
-        <h2>보유 포지션</h2>
-        <button class="btn btn-ghost" id="btn-add-position" style="padding:6px 10px;font-size:12px;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          추가
-        </button>
+        <h2>저장된 포지션</h2>
       </div>
-      <div id="position-list"></div>
+      <div id="kt-saved-list"></div>
     </div>
 
     <!-- ══ 매매일지 탭 ══════════════════════════════════════════ -->
@@ -1456,6 +1455,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (tab === 'position') {
       ktUpdateUnitSummary();
       ktUpdateRegimeBanner(ktMarketBull);
+      ktRenderSavedList();
     }
   });
 });
@@ -1980,6 +1980,8 @@ const KT_UNIT_KEY = 'kt_units';
   if (r) document.getElementById('kt-risk').value = r;
   if (sp) document.getElementById('kt-stoppct').value = sp;
   if (u) document.getElementById('kt-units').value = u;
+  // 저장 목록 초기 렌더 (함수 정의 후 호출)
+  setTimeout(() => { if (typeof ktRenderSavedList === 'function') ktRenderSavedList(); }, 0);
 })();
 
 // 설정 변경 시 저장 + 요약 업데이트
@@ -1999,13 +2001,14 @@ document.getElementById('kt-seed').addEventListener('input', () => {
 });
 
 function ktGetSettings() {
-  const seed     = +document.getElementById('kt-seed').value || 0;
-  const riskPct  = +document.getElementById('kt-risk').value || 2;
-  const stopPct  = +document.getElementById('kt-stoppct').value || 8;
-  const unitCnt  = +document.getElementById('kt-units').value || 3;
-  const maxLoss  = seed * riskPct / 100;           // 1회 최대 허용 손실금
-  const unitAmt  = maxLoss / (stopPct / 100);      // 1유닛 매수금 = 최대손실 ÷ 손절률
-  return { seed, riskPct, stopPct, unitCnt, maxLoss, unitAmt };
+  const seed      = +document.getElementById('kt-seed').value || 0;
+  const riskPct   = +document.getElementById('kt-risk').value || 2;
+  const stopPct   = +document.getElementById('kt-stoppct').value || 8;
+  const unitCnt   = +document.getElementById('kt-units').value || 3;
+  const maxLoss   = seed * riskPct / 100;            // 매매당 최대 허용 손실금 (예: 1억×2%=200만)
+  const totalAmt  = maxLoss / (stopPct / 100);       // 1회 매매 총 투자금 (예: 200만÷8%=2,500만)
+  const unitAmt   = totalAmt / unitCnt;              // 1유닛 금액 (예: 2,500만÷4=625만)
+  return { seed, riskPct, stopPct, unitCnt, maxLoss, totalAmt, unitAmt };
 }
 
 function ktFmtW(n) {
@@ -2015,27 +2018,37 @@ function ktFmtW(n) {
 }
 
 function ktUpdateUnitSummary() {
-  const { seed, riskPct, stopPct, unitCnt, maxLoss, unitAmt } = ktGetSettings();
+  const { seed, riskPct, stopPct, unitCnt, maxLoss, totalAmt, unitAmt } = ktGetSettings();
   const summaryEl = document.getElementById('kt-unit-summary');
   const tableEl   = document.getElementById('kt-unit-table');
   if (!seed) { summaryEl.style.display = 'none'; return; }
   summaryEl.style.display = 'block';
 
+  // 장세 추천 유닛
+  const recUnit = (ktMarketBull === true) ? 2 : 1;
+
   const rows = [];
-  // 추천 유닛: 장세 반영
   for (let u = 1; u <= unitCnt; u++) {
-    const amt = unitAmt * u;
-    let recTag = '';
-    if (ktMarketBull === true  && u === 2) recTag = ' <span style="font-size:10px;color:var(--green);font-weight:700;">◀ 강세 추천 시작</span>';
-    if (ktMarketBull === false && u === 1) recTag = ' <span style="font-size:10px;color:var(--orange);font-weight:700;">◀ 약세 추천</span>';
-    rows.push(`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--surface1);border-radius:8px;">
-      <span style="font-size:13px;font-weight:700;">${u}유닛 (${unitCnt}분할 중)</span>
-      <span style="font-size:13px;font-weight:700;color:var(--accent);">${fmtComma(Math.round(amt))}원${recTag}</span>
+    const isRec = (u === recUnit);
+    const borderStyle = isRec
+      ? (ktMarketBull === true ? '2px solid var(--green)' : '2px solid var(--orange)')
+      : '1px solid transparent';
+    const labelColor = isRec
+      ? (ktMarketBull === true ? 'var(--green)' : 'var(--orange)')
+      : 'var(--accent)';
+    const recBadge = isRec
+      ? `<span style="font-size:10px;padding:2px 6px;border-radius:10px;background:${ktMarketBull===true?'var(--green-soft)':'var(--orange-soft)'};color:${labelColor};font-weight:700;margin-left:6px;">${ktMarketBull===true?'강세 추천':'약세 추천'}</span>`
+      : '';
+    rows.push(`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--surface1);border-radius:8px;border:${borderStyle};">
+      <span style="font-size:13px;font-weight:700;">${u}유닛${recBadge}</span>
+      <span style="font-size:14px;font-weight:700;color:${labelColor};">${fmtComma(Math.round(unitAmt))}원</span>
     </div>`);
   }
   tableEl.innerHTML = `
-    <div style="display:flex;justify-content:space-between;padding:4px 10px;font-size:11px;color:var(--fg3);">
-      <span>시드 ${fmtComma(seed)}원 · R=${riskPct}% · 손절=${stopPct}% · 최대손실 ${fmtComma(Math.round(maxLoss))}원</span>
+    <div style="padding:4px 2px 6px;font-size:11px;color:var(--fg3);">
+      매매당 최대손실 <b style="color:var(--fg2);">${fmtComma(Math.round(maxLoss))}원</b>
+      · 총 투자금 <b style="color:var(--fg2);">${fmtComma(Math.round(totalAmt))}원</b>
+      · ${unitCnt}분할 → <b style="color:var(--accent);">1유닛 = ${fmtComma(Math.round(unitAmt))}원</b>
     </div>
     ${rows.join('')}`;
 }
@@ -2133,7 +2146,7 @@ function ktPriceBox(label, val, color, sub) {
 }
 
 function ktCalculate() {
-  const { seed, riskPct, stopPct, unitCnt, maxLoss, unitAmt } = ktGetSettings();
+  const { seed, riskPct, stopPct, unitCnt, maxLoss, totalAmt, unitAmt } = ktGetSettings();
   const entry   = +document.getElementById('kt-entry').value || 0;
   const qty     = +document.getElementById('kt-qty').value   || 0;
   const atr     = +document.getElementById('kt-atr').value   || 0;
@@ -2175,12 +2188,11 @@ function ktCalculate() {
     recBg = 'rgba(100,100,100,0.08)';
     recMsg = '❓ 장세 데이터 없음 — <b>1유닛</b> 진입 권장';
   }
-  const recAmt = unitAmt * recUnit;
   recBox.style.background = recBg;
   recBox.style.border = `1px solid ${recColor}`;
   recBox.style.borderRadius = '10px';
   recBox.innerHTML = `<div style="font-size:13px;">${recMsg}</div>
-    ${seed ? `<div style="margin-top:6px;font-size:13px;">추천 진입금액: <b style="color:${recColor};">${fmtComma(Math.round(recAmt))}원</b> (${recUnit}유닛)</div>` : ''}`;
+    ${seed ? `<div style="margin-top:4px;font-size:12px;color:var(--fg2);">1유닛 ${fmtComma(Math.round(unitAmt))}원 × ${recUnit}유닛 = <b style="color:${recColor};">${fmtComma(Math.round(recAmt))}원</b></div>` : ''}`;
 
   // 손절 & 목표가 그리드
   document.getElementById('kt-price-grid').innerHTML = [
@@ -2228,6 +2240,106 @@ function ktCalculate() {
     nextUnitBox.style.display = 'block';
     nextUnitBox.innerHTML = `<b>+3R 도달 시</b> — 이미 최대 유닛(${unitCnt}유닛)입니다. 현재 포지션 유지.`;
   }
+}
+
+// ─── 깡토 포지션 저장/불러오기 ──────────────────────────────
+const KT_POSITIONS_KEY = 'kt_saved_positions';
+
+function ktGetSavedPositions() {
+  try { return JSON.parse(localStorage.getItem(KT_POSITIONS_KEY) || '[]'); } catch { return []; }
+}
+
+function ktSavePosition() {
+  const code   = document.getElementById('kt-stock-code').value;
+  const label  = document.getElementById('kt-stock-label').textContent;
+  const entry  = +document.getElementById('kt-entry').value || 0;
+  const qty    = +document.getElementById('kt-qty').value   || 0;
+  const atr    = +document.getElementById('kt-atr').value   || 0;
+  const atrMult= +document.getElementById('kt-atr-mult').value || 2;
+  const low10  = +document.getElementById('kt-low10').value || 0;
+
+  if (!entry) { alert('매수단가를 입력하세요'); return; }
+  if (!label) { alert('종목을 검색·선택하세요'); return; }
+
+  const { stopPct, totalAmt, unitAmt, maxLoss } = ktGetSettings();
+  const stopPrice = Math.round(entry * (1 - stopPct / 100));
+  const t3        = Math.round(entry * (1 + stopPct * 3 / 100));
+  const atrStop   = atr ? Math.round(entry - atr * atrMult) : null;
+
+  const pos = {
+    id: Date.now(),
+    code, label, entry, qty, atr, atrMult, low10,
+    stopPrice, t3, atrStop,
+    savedAt: new Date().toLocaleDateString('ko-KR', { month:'numeric', day:'numeric' }),
+  };
+
+  const list = ktGetSavedPositions();
+  list.unshift(pos);
+  localStorage.setItem(KT_POSITIONS_KEY, JSON.stringify(list));
+  ktRenderSavedList();
+  // 저장 피드백
+  const btn = document.querySelector('button[onclick="ktSavePosition()"]');
+  if (btn) { btn.textContent = '✅ 저장됨'; setTimeout(() => { btn.textContent = '💾 포지션 저장'; }, 1200); }
+}
+
+function ktRenderSavedList() {
+  const list = ktGetSavedPositions();
+  const el   = document.getElementById('kt-saved-list');
+  if (!el) return;
+  if (!list.length) {
+    el.innerHTML = `<div style="padding:16px;text-align:center;font-size:13px;color:var(--fg3);">저장된 포지션이 없습니다.</div>`;
+    return;
+  }
+  el.innerHTML = list.map(p => {
+    const atrStopText = p.atrStop ? `ATR손절 <b>${fmtComma(p.atrStop)}원</b>` : '';
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px;cursor:pointer;"
+        onclick="ktLoadPosition(${p.id})">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-size:13px;font-weight:700;color:var(--accent);">${p.label}</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span style="font-size:10px;color:var(--fg3);">${p.savedAt}</span>
+          <button onclick="event.stopPropagation();ktDeletePosition(${p.id})"
+            style="background:none;border:none;cursor:pointer;color:var(--fg3);font-size:15px;padding:0 2px;line-height:1;">✕</button>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--fg2);display:flex;flex-wrap:wrap;gap:10px;">
+        <span>매수가 <b>${fmtComma(p.entry)}원</b></span>
+        <span style="color:var(--red);">-1R손절 <b>${fmtComma(p.stopPrice)}원</b></span>
+        ${atrStopText ? `<span style="color:var(--red);">${atrStopText}</span>` : ''}
+        <span style="color:var(--green);">+3R목표 <b>${fmtComma(p.t3)}원</b></span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function ktLoadPosition(id) {
+  const list = ktGetSavedPositions();
+  const p = list.find(x => x.id === id);
+  if (!p) return;
+
+  // 종목 복원
+  document.getElementById('kt-stock-code').value = p.code;
+  document.getElementById('kt-stock-label').textContent = p.label;
+  document.getElementById('kt-stock-selected').hidden = false;
+
+  // 입력값 복원
+  document.getElementById('kt-entry').value    = p.entry;
+  document.getElementById('kt-qty').value      = p.qty || '';
+  document.getElementById('kt-atr').value      = p.atr || '';
+  document.getElementById('kt-atr-mult').value = p.atrMult || 2;
+  document.getElementById('kt-low10').value    = p.low10 || '';
+
+  // 탭 스크롤 위로
+  document.getElementById('panel-position').scrollTo({ top: 0, behavior: 'smooth' });
+
+  // 자동 계산
+  ktCalculate();
+}
+
+function ktDeletePosition(id) {
+  const list = ktGetSavedPositions().filter(x => x.id !== id);
+  localStorage.setItem(KT_POSITIONS_KEY, JSON.stringify(list));
+  ktRenderSavedList();
 }
 
 // ─── POSITIONS ──────────────────────────────────────────────
