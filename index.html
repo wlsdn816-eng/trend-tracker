@@ -968,10 +968,10 @@
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">손절 -1R (%)</label>
+            <label class="form-label">1R 단위 (%)</label>
             <select class="form-input" id="kt-stoppct">
-              <option value="7">-7%</option>
-              <option value="8" selected>-8%</option>
+              <option value="7">7%</option>
+              <option value="8" selected>8%</option>
             </select>
           </div>
           <div class="form-group">
@@ -1021,7 +1021,7 @@
         <div class="form-row" style="margin-top:6px;">
           <div class="form-group">
             <label class="form-label">매수단가 (원)</label>
-            <input type="number" class="form-input" id="kt-entry" placeholder="50,000" inputmode="numeric">
+            <input type="text" class="form-input" id="kt-entry" placeholder="50,000" inputmode="numeric">
           </div>
           <div class="form-group">
             <label class="form-label">수량 (주)</label>
@@ -1063,8 +1063,8 @@
         <!-- 결과 영역 -->
         <div id="kt-result" hidden style="margin-top:16px;">
 
-          <!-- 추천 유닛 -->
-          <div id="kt-recommend-box" style="border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;"></div>
+          <!-- 추천 유닛 (숨김 처리) -->
+          <div id="kt-recommend-box" style="display:none;"></div>
 
           <!-- 손절 & 목표가 -->
           <div style="font-size:12px;font-weight:700;color:var(--fg2);margin-bottom:8px;">🎯 손절 & 목표가 (맥스2% / -1R 기준)</div>
@@ -2013,6 +2013,22 @@ document.getElementById('kt-seed').addEventListener('input', () => {
   ktUpdateUnitSummary();
 });
 
+// 매수단가 천단위 콤마 자동 포맷팅
+document.getElementById('kt-entry').addEventListener('input', () => {
+  const el = document.getElementById('kt-entry');
+  const raw = el.value.replace(/,/g, '');
+  const num = parseInt(raw, 10);
+  if (!isNaN(num)) {
+    const pos = el.selectionStart;
+    const prevLen = el.value.length;
+    el.value = fmtComma(num);
+    const diff = el.value.length - prevLen;
+    el.setSelectionRange(pos + diff, pos + diff);
+  } else if (raw === '') {
+    el.value = '';
+  }
+});
+
 function ktGetSettings() {
   const seed      = +(document.getElementById('kt-seed').value.replace(/,/g,'')) || 0;
   const riskPct   = +document.getElementById('kt-risk').value || 2;
@@ -2161,7 +2177,7 @@ function ktPriceBox(label, val, color, sub) {
 
 function ktCalculate() {
   const { seed, riskPct, stopPct, unitCnt, maxLoss, totalAmt, unitAmt } = ktGetSettings();
-  const entry   = +document.getElementById('kt-entry').value || 0;
+  const entry   = +(document.getElementById('kt-entry').value.replace(/,/g,'')) || 0;
   const qty     = +document.getElementById('kt-qty').value   || 0;
   const atr     = +document.getElementById('kt-atr').value   || 0;
   const atrMult = +document.getElementById('kt-atr-mult').value || 2;
@@ -2267,7 +2283,7 @@ function ktGetSavedPositions() {
 function ktSavePosition() {
   const code   = document.getElementById('kt-stock-code').value;
   const label  = document.getElementById('kt-stock-label').textContent;
-  const entry  = +document.getElementById('kt-entry').value || 0;
+  const entry  = +(document.getElementById('kt-entry').value.replace(/,/g,'')) || 0;
   const qty    = +document.getElementById('kt-qty').value   || 0;
   const atr    = +document.getElementById('kt-atr').value   || 0;
   const atrMult= +document.getElementById('kt-atr-mult').value || 2;
@@ -2338,7 +2354,7 @@ function ktLoadPosition(id) {
   document.getElementById('kt-stock-selected').hidden = false;
 
   // 입력값 복원
-  document.getElementById('kt-entry').value    = p.entry;
+  document.getElementById('kt-entry').value    = p.entry ? fmtComma(p.entry) : '';
   document.getElementById('kt-qty').value      = p.qty || '';
   document.getElementById('kt-atr').value      = p.atr || '';
   document.getElementById('kt-atr-mult').value = p.atrMult || 2;
@@ -2676,7 +2692,8 @@ async function loadHoldingPrices(force) {
     }
   }
 
-  // 장 마감 후 또는 실시간 실패: KV 스냅샷 사용
+  // 장 마감 후 또는 실시간 실패: KV 스냅샷 사용 (없는 종목은 실시간으로 추가 조회)
+  const missingCodes = [...codes]; // KV에 없는 종목 추적
   try {
     const snapRes = await fetch(`${KIS_WORKER}/holdings-quotes`);
     if (snapRes.ok) {
@@ -2687,22 +2704,20 @@ async function loadHoldingPrices(force) {
           if (q) {
             h.curPrice = q.curr || h.curPrice;
             h.dayChange = q.chg || 0;
+            const idx = missingCodes.indexOf(h.code);
+            if (idx !== -1) missingCodes.splice(idx, 1); // KV에 있으면 missing에서 제거
           }
         });
-        save(KEYS_HOLDING, holdings);
         lastFetchedAt   = snap.fetchedAt   || '';
         lastFetchedTime = snap.fetchedTime || '';
-        updateFetchedAtLabel();
-        renderHoldings();
-        return;
       }
     }
   } catch(e) { /* KV 스냅샷 없음 */ }
 
-  // 최후 fallback: 장 마감 후지만 KV 스냅샷도 없으면 실시간 시도
-  if (!marketOpen) {
+  // KV에 없는 종목(또는 전체) 실시간 조회
+  if (missingCodes.length > 0) {
     try {
-      const res = await fetch(`${KIS_WORKER}/quotes?codes=${codes.join(',')}`);
+      const res = await fetch(`${KIS_WORKER}/quotes?codes=${missingCodes.join(',')}`);
       const data = await res.json();
       if (data.quotes) {
         data.quotes.forEach(q => {
@@ -2713,16 +2728,18 @@ async function loadHoldingPrices(force) {
             }
           });
         });
-        save(KEYS_HOLDING, holdings);
-        lastFetchedAt   = data.fetchedAt   || '';
-        lastFetchedTime = data.fetchedTime || '';
-        updateFetchedAtLabel();
-        renderHoldings();
+        if (!lastFetchedAt) {
+          lastFetchedAt   = data.fetchedAt   || '';
+          lastFetchedTime = data.fetchedTime || '';
+        }
       }
     } catch(e) {
       console.warn('현재가 조회 실패:', e);
     }
   }
+  save(KEYS_HOLDING, holdings);
+  updateFetchedAtLabel();
+  renderHoldings();
 }
 
 function updateFetchedAtLabel() {
