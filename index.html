@@ -2753,14 +2753,12 @@ async function loadHoldingPrices(force) {
     try {
       const res = await fetch(`${KIS_WORKER}/quotes?codes=${codes.join(',')}`);
       const data = await res.json();
-      console.log('[quotes] 응답:', JSON.stringify(data).slice(0, 500));
       if (data.quotes) {
         data.quotes.forEach(q => {
-          console.log('[quotes] 종목:', q.code, '현재가:', q.curr, '등락률:', q.chg, q.rate, q.pctChg, q.changeRate);
           holdings.forEach(h => {
             if (h.code === q.code) {
               h.curPrice = q.curr || h.curPrice;
-              h.dayChange = q.chg ?? q.rate ?? q.pctChg ?? q.changeRate ?? 0;
+              h.dayChange = q.chg ?? 0;
             }
           });
         });
@@ -2776,52 +2774,25 @@ async function loadHoldingPrices(force) {
     }
   }
 
-  // 장 마감 후 또는 실시간 실패: KV 스냅샷 사용 (없는 종목은 실시간으로 추가 조회)
-  const missingCodes = [...codes]; // KV에 없는 종목 추적
+  // 장 마감 후 또는 실시간 실패: 전종목 실시간 조회 (KV 스냅샷 불안정으로 직접 조회)
   try {
-    const snapRes = await fetch(`${KIS_WORKER}/holdings-quotes`);
-    if (snapRes.ok) {
-      const snap = await snapRes.json();
-      if (snap.quotes) {
+    const res = await fetch(`${KIS_WORKER}/quotes?codes=${codes.join(',')}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.quotes) {
+      data.quotes.forEach(q => {
         holdings.forEach(h => {
-          const q = snap.quotes[h.code];
-          if (q) {
+          if (h.code === q.code) {
             h.curPrice = q.curr || h.curPrice;
-            h.dayChange = q.chg || 0;
-            const idx = missingCodes.indexOf(h.code);
-            if (idx !== -1) missingCodes.splice(idx, 1); // KV에 있으면 missing에서 제거
+            h.dayChange = q.chg ?? 0;
           }
         });
-        lastFetchedAt   = snap.fetchedAt   || '';
-        lastFetchedTime = snap.fetchedTime || '';
-      }
+      });
+      lastFetchedAt   = data.fetchedAt   || '';
+      lastFetchedTime = data.fetchedTime || '';
     }
-  } catch(e) { /* KV 스냅샷 없음 */ }
-
-  // KV에 없는 종목(또는 전체) 실시간 조회
-  if (missingCodes.length > 0) {
-    try {
-      const res = await fetch(`${KIS_WORKER}/quotes?codes=${missingCodes.join(',')}`);
-      const data = await res.json();
-      console.log('[quotes-missing] 응답:', JSON.stringify(data).slice(0, 500));
-      if (data.quotes) {
-        data.quotes.forEach(q => {
-          console.log('[quotes-missing] 종목:', q.code, '현재가:', q.curr, '등락률:', q.chg, q.rate, q.pctChg, q.changeRate);
-          holdings.forEach(h => {
-            if (h.code === q.code) {
-              h.curPrice = q.curr || h.curPrice;
-              h.dayChange = q.chg ?? q.rate ?? q.pctChg ?? q.changeRate ?? 0;
-            }
-          });
-        });
-        if (!lastFetchedAt) {
-          lastFetchedAt   = data.fetchedAt   || '';
-          lastFetchedTime = data.fetchedTime || '';
-        }
-      }
-    } catch(e) {
-      console.warn('현재가 조회 실패:', e);
-    }
+  } catch(e) {
+    console.warn('현재가 조회 실패:', e);
   }
   save(KEYS_HOLDING, holdings);
   updateFetchedAtLabel();
