@@ -949,93 +949,141 @@
     <!-- ══ 포지션 탭 ════════════════════════════════════════════ -->
     <div class="tab-panel" id="panel-position">
 
-      <div class="section-head">
-        <h2>포지션 계산기</h2>
-      </div>
-
-      <!-- 계좌 설정 -->
-      <div class="card" id="account-card">
-        <div class="card-title" style="font-size:14px;margin-bottom:12px;">계좌 설정</div>
+      <!-- ① 리스크 설정 카드 -->
+      <div class="section-head"><h2>깡토 추세추종 계산기</h2></div>
+      <div class="card" id="kangto-setting-card">
+        <div class="card-title" style="font-size:14px;margin-bottom:12px;">⚙️ 리스크 설정</div>
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">계좌 총액 (원)</label>
-            <input type="number" class="form-input" id="acct-total" placeholder="10,000,000" value="">
+            <label class="form-label">시드머니 (원)</label>
+            <input type="number" class="form-input" id="kt-seed" placeholder="100,000,000" inputmode="numeric">
           </div>
           <div class="form-group">
-            <label class="form-label">허용 손실 %</label>
-            <input type="number" class="form-input" id="acct-risk" placeholder="2" value="2" step="0.5">
-          </div>
-        </div>
-      </div>
-
-      <!-- 포지션 계산 -->
-      <div class="card">
-        <div class="card-title" style="font-size:14px;margin-bottom:12px;">포지션 사이징</div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">진입가 (원)</label>
-            <input type="number" class="form-input" id="entry-price" placeholder="50,000">
-          </div>
-          <div class="form-group">
-            <label class="form-label">ATR (원)</label>
-            <input type="number" class="form-input" id="entry-atr" placeholder="1,500">
+            <label class="form-label">리스크 R (%)</label>
+            <select class="form-input" id="kt-risk">
+              <option value="1">1%</option>
+              <option value="2" selected>2%</option>
+            </select>
           </div>
         </div>
         <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">손절 -1R (%)</label>
+            <select class="form-input" id="kt-stoppct">
+              <option value="7">-7%</option>
+              <option value="8" selected>-8%</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">유닛 분할 수</label>
+            <select class="form-input" id="kt-units">
+              <option value="3" selected>3분할</option>
+              <option value="4">4분할</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 장세 연동 배너 -->
+        <div id="kt-regime-banner" style="border-radius:10px;padding:10px 14px;margin-top:10px;display:flex;align-items:center;gap:10px;font-size:13px;background:rgba(100,100,100,0.08);border:1px solid rgba(100,100,100,0.2);">
+          <span id="kt-regime-icon" style="font-size:16px;">⏳</span>
+          <div>
+            <div style="font-weight:700;" id="kt-regime-label">장세 확인 중…</div>
+            <div style="font-size:11px;color:var(--fg3);margin-top:1px;" id="kt-regime-sub"></div>
+          </div>
+        </div>
+
+        <!-- 유닛별 포지션 사이즈 요약 -->
+        <div id="kt-unit-summary" style="margin-top:14px;display:none;">
+          <div style="font-size:12px;font-weight:700;color:var(--fg2);margin-bottom:8px;">📊 유닛별 포지션 사이즈</div>
+          <div id="kt-unit-table" style="display:flex;flex-direction:column;gap:6px;"></div>
+        </div>
+      </div>
+
+      <!-- ② 종목 계산 카드 -->
+      <div class="card" style="margin-top:0;">
+        <div class="card-title" style="font-size:14px;margin-bottom:12px;">📈 종목별 매매가 계산</div>
+
+        <!-- 종목명 검색 -->
+        <div class="form-group">
+          <label class="form-label">종목명 검색</label>
+          <div class="search-wrap" style="margin-bottom:0;">
+            <input type="text" class="form-input" id="kt-stock-search" placeholder="삼성전자, SK하이닉스…" autocomplete="off">
+            <div id="kt-stock-dropdown" class="search-dropdown" style="display:none;"></div>
+          </div>
+          <input type="hidden" id="kt-stock-code">
+          <div id="kt-stock-selected" hidden style="margin-top:6px;padding:6px 10px;background:var(--accent-soft);border-radius:8px;font-size:12px;display:flex;align-items:center;justify-content:space-between;">
+            <span id="kt-stock-label" style="font-weight:600;color:var(--accent);"></span>
+            <button type="button" onclick="ktClearStock()" style="background:none;border:none;cursor:pointer;color:var(--fg3);font-size:14px;padding:0 2px;">✕</button>
+          </div>
+        </div>
+
+        <!-- 매수단가 / 수량 -->
+        <div class="form-row" style="margin-top:6px;">
+          <div class="form-group">
+            <label class="form-label">매수단가 (원)</label>
+            <input type="number" class="form-input" id="kt-entry" placeholder="50,000" inputmode="numeric">
+          </div>
+          <div class="form-group">
+            <label class="form-label">수량 (주)</label>
+            <input type="number" class="form-input" id="kt-qty" placeholder="100" min="1" inputmode="numeric">
+          </div>
+        </div>
+
+        <!-- ATR 설정 (자동 로딩) -->
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" style="display:flex;align-items:center;gap:4px;">
+              ATR (14일, 원)
+              <span id="kt-atr-loading" style="font-size:10px;color:var(--fg3);display:none;">로딩중…</span>
+            </label>
+            <input type="number" class="form-input" id="kt-atr" placeholder="자동 입력" inputmode="numeric">
+          </div>
           <div class="form-group">
             <label class="form-label">ATR 배수</label>
-            <input type="number" class="form-input" id="atr-mult" placeholder="2" value="2" step="0.5">
-          </div>
-          <div class="form-group">
-            <label class="form-label">10일 최저가 (원)</label>
-            <input type="number" class="form-input" id="trail-low" placeholder="47,000">
+            <select class="form-input" id="kt-atr-mult">
+              <option value="1.5">1.5배</option>
+              <option value="2" selected>2배</option>
+              <option value="2.5">2.5배</option>
+              <option value="3">3배</option>
+            </select>
           </div>
         </div>
-        <button class="btn btn-primary" id="btn-calc" style="margin-top:4px;">계산하기</button>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">10일 최저가 (원)
+              <span id="kt-low10-loading" style="font-size:10px;color:var(--fg3);display:none;">로딩중…</span>
+            </label>
+            <input type="number" class="form-input" id="kt-low10" placeholder="자동 입력" inputmode="numeric">
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end;">
+            <button class="btn btn-primary" onclick="ktCalculate()" style="width:100%;">계산하기</button>
+          </div>
+        </div>
 
-        <div id="calc-result" style="margin-top:16px;display:none;">
-          <div class="result-box">
-            <div class="result-box-title">ATR 기반 포지션</div>
-            <div class="result-grid">
-              <div class="result-item">
-                <div class="result-item-label">손절가</div>
-                <div class="result-item-val red" id="r-stoploss">—</div>
-              </div>
-              <div class="result-item">
-                <div class="result-item-label">매수 수량</div>
-                <div class="result-item-val" id="r-qty">—</div>
-              </div>
-              <div class="result-item">
-                <div class="result-item-label">투자 금액</div>
-                <div class="result-item-val" id="r-invest">—</div>
-              </div>
-              <div class="result-item">
-                <div class="result-item-label">최대 손실</div>
-                <div class="result-item-val red" id="r-maxloss">—</div>
-              </div>
-            </div>
-          </div>
-          <div class="result-box">
-            <div class="result-box-title">트레일링 스탑</div>
-            <div class="result-grid">
-              <div class="result-item">
-                <div class="result-item-label">10일 최저가</div>
-                <div class="result-item-val orange" id="r-trail">—</div>
-              </div>
-              <div class="result-item">
-                <div class="result-item-label">스탑 상태</div>
-                <div id="r-trail-status">—</div>
-              </div>
-            </div>
-          </div>
-          <div class="result-box">
-            <div class="result-box-title">피라미딩 (터틀식)</div>
-            <div id="r-pyramid"></div>
-          </div>
+        <!-- 결과 영역 -->
+        <div id="kt-result" hidden style="margin-top:16px;">
+
+          <!-- 추천 유닛 -->
+          <div id="kt-recommend-box" style="border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13px;"></div>
+
+          <!-- 손절 & 목표가 -->
+          <div style="font-size:12px;font-weight:700;color:var(--fg2);margin-bottom:8px;">🎯 손절 & 목표가 (맥스2% / -1R 기준)</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px;" id="kt-price-grid"></div>
+
+          <!-- ATR 손절가 -->
+          <div style="font-size:12px;font-weight:700;color:var(--fg2);margin-bottom:8px;">📐 ATR 기반 손절가</div>
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:12px;" id="kt-atr-grid"></div>
+
+          <!-- 포지션 수익/손실 요약 -->
+          <div style="font-size:12px;font-weight:700;color:var(--fg2);margin-bottom:8px;">💰 포지션 수익/손실 시뮬레이션</div>
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;" id="kt-sim-grid"></div>
+
+          <!-- +3R 도달 시 유닛 조정 추천 -->
+          <div id="kt-next-unit-box" style="margin-top:12px;border-radius:10px;padding:10px 14px;font-size:12px;background:var(--accent-soft);display:none;"></div>
         </div>
       </div>
 
-      <!-- 보유 포지션 목록 -->
+      <!-- 보유 포지션 목록 (기존 유지) -->
       <div class="section-head" style="margin-top:8px;">
         <h2>보유 포지션</h2>
         <button class="btn btn-ghost" id="btn-add-position" style="padding:6px 10px;font-size:12px;">
@@ -1405,6 +1453,10 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active');
     document.getElementById('panel-' + tab).classList.add('active');
     if (tab === 'home') loadHomeData(); // 5분 캐시 적용
+    if (tab === 'position') {
+      ktUpdateUnitSummary();
+      ktUpdateRegimeBanner(ktMarketBull);
+    }
   });
 });
 
@@ -1907,54 +1959,276 @@ window.deleteScreener = (i) => {
   renderScreener();
 };
 
-// ─── POSITION CALCULATOR ────────────────────────────────────
-document.getElementById('btn-calc').addEventListener('click', () => {
-  const acctTotal = +document.getElementById('acct-total').value || 0;
-  const riskPct = +document.getElementById('acct-risk').value || 2;
-  const entry = +document.getElementById('entry-price').value;
-  const atr = +document.getElementById('entry-atr').value;
-  const mult = +document.getElementById('atr-mult').value || 2;
-  const trailLow = +document.getElementById('trail-low').value;
+// ─── 깡토 추세추종 계산기 ────────────────────────────────────
 
-  if (!entry || !atr) return;
+// 전역 장세 상태 (kospi-ma 로드 후 업데이트)
+let ktMarketBull = null; // true=강세, false=약세/횡보, null=미확인
 
-  const stoploss = entry - atr * mult;
-  const riskPerShare = entry - stoploss;
-  const allowedLoss = acctTotal * (riskPct / 100);
-  const qty = acctTotal > 0 ? Math.floor(allowedLoss / riskPerShare) : 0;
-  const invest = qty * entry;
-  const maxLoss = qty * riskPerShare;
+// localStorage 저장 키
+const KT_SEED_KEY = 'kt_seed';
+const KT_RISK_KEY = 'kt_risk';
+const KT_STOP_KEY = 'kt_stop';
+const KT_UNIT_KEY = 'kt_units';
 
-  document.getElementById('r-stoploss').textContent = fmt(stoploss) + '원';
-  document.getElementById('r-qty').textContent = qty > 0 ? qty + '주' : '계좌 입력 필요';
-  document.getElementById('r-invest').textContent = invest > 0 ? fmt(invest) + '원' : '—';
-  document.getElementById('r-maxloss').textContent = maxLoss > 0 ? '-' + fmt(maxLoss) + '원' : '—';
+// 초기값 복원
+(function ktRestoreSettings() {
+  const s = localStorage.getItem(KT_SEED_KEY);
+  const r = localStorage.getItem(KT_RISK_KEY);
+  const sp = localStorage.getItem(KT_STOP_KEY);
+  const u = localStorage.getItem(KT_UNIT_KEY);
+  if (s) document.getElementById('kt-seed').value = s;
+  if (r) document.getElementById('kt-risk').value = r;
+  if (sp) document.getElementById('kt-stoppct').value = sp;
+  if (u) document.getElementById('kt-units').value = u;
+})();
 
-  // Trailing stop
-  document.getElementById('r-trail').textContent = trailLow > 0 ? fmt(trailLow) + '원' : '—';
-  const trailEl = document.getElementById('r-trail-status');
-  if (trailLow > 0 && entry > 0) {
-    if (trailLow <= stoploss) {
-      trailEl.innerHTML = '<span class="badge badge-red">⚠️ 청산 고려</span>';
-    } else {
-      trailEl.innerHTML = '<span class="badge badge-green">홀딩 유지</span>';
-    }
+// 설정 변경 시 저장 + 요약 업데이트
+['kt-seed','kt-risk','kt-stoppct','kt-units'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('change', () => {
+    if (id === 'kt-seed')    localStorage.setItem(KT_SEED_KEY, el.value);
+    if (id === 'kt-risk')    localStorage.setItem(KT_RISK_KEY, el.value);
+    if (id === 'kt-stoppct') localStorage.setItem(KT_STOP_KEY, el.value);
+    if (id === 'kt-units')   localStorage.setItem(KT_UNIT_KEY, el.value);
+    ktUpdateUnitSummary();
+  });
+});
+document.getElementById('kt-seed').addEventListener('input', () => {
+  localStorage.setItem(KT_SEED_KEY, document.getElementById('kt-seed').value);
+  ktUpdateUnitSummary();
+});
+
+function ktGetSettings() {
+  const seed     = +document.getElementById('kt-seed').value || 0;
+  const riskPct  = +document.getElementById('kt-risk').value || 2;
+  const stopPct  = +document.getElementById('kt-stoppct').value || 8;
+  const unitCnt  = +document.getElementById('kt-units').value || 3;
+  const maxLoss  = seed * riskPct / 100;           // 1회 최대 허용 손실금
+  const unitAmt  = maxLoss / (stopPct / 100);      // 1유닛 매수금 = 최대손실 ÷ 손절률
+  return { seed, riskPct, stopPct, unitCnt, maxLoss, unitAmt };
+}
+
+function ktFmtW(n) {
+  if (n >= 1e8) return (n/1e8).toFixed(0) + '억';
+  if (n >= 1e4) return Math.round(n/1e4) + '만';
+  return fmtComma(Math.round(n));
+}
+
+function ktUpdateUnitSummary() {
+  const { seed, riskPct, stopPct, unitCnt, maxLoss, unitAmt } = ktGetSettings();
+  const summaryEl = document.getElementById('kt-unit-summary');
+  const tableEl   = document.getElementById('kt-unit-table');
+  if (!seed) { summaryEl.style.display = 'none'; return; }
+  summaryEl.style.display = 'block';
+
+  const rows = [];
+  // 추천 유닛: 장세 반영
+  for (let u = 1; u <= unitCnt; u++) {
+    const amt = unitAmt * u;
+    let recTag = '';
+    if (ktMarketBull === true  && u === 2) recTag = ' <span style="font-size:10px;color:var(--green);font-weight:700;">◀ 강세 추천 시작</span>';
+    if (ktMarketBull === false && u === 1) recTag = ' <span style="font-size:10px;color:var(--orange);font-weight:700;">◀ 약세 추천</span>';
+    rows.push(`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--surface1);border-radius:8px;">
+      <span style="font-size:13px;font-weight:700;">${u}유닛 (${unitCnt}분할 중)</span>
+      <span style="font-size:13px;font-weight:700;color:var(--accent);">${fmtComma(Math.round(amt))}원${recTag}</span>
+    </div>`);
+  }
+  tableEl.innerHTML = `
+    <div style="display:flex;justify-content:space-between;padding:4px 10px;font-size:11px;color:var(--fg3);">
+      <span>시드 ${fmtComma(seed)}원 · R=${riskPct}% · 손절=${stopPct}% · 최대손실 ${fmtComma(Math.round(maxLoss))}원</span>
+    </div>
+    ${rows.join('')}`;
+}
+
+// 장세 배너 업데이트 (renderRegime에서 호출)
+function ktUpdateRegimeBanner(isBull) {
+  ktMarketBull = isBull;
+  const icon  = document.getElementById('kt-regime-icon');
+  const label = document.getElementById('kt-regime-label');
+  const sub   = document.getElementById('kt-regime-sub');
+  const banner = document.getElementById('kt-regime-banner');
+  if (!icon) return;
+  if (isBull === null) {
+    icon.textContent  = '❓';
+    label.textContent = '장세 데이터 없음';
+    sub.textContent   = '';
+    return;
+  }
+  icon.textContent  = isBull ? '🟢' : '🔴';
+  label.textContent = isBull ? '강세장 — 코스피 60MA 위' : '약세장 — 코스피 60MA 아래';
+  sub.textContent   = isBull ? '2유닛부터 진입 추천' : '1유닛 진입 추천';
+  banner.style.background   = isBull ? 'rgba(22,163,74,0.1)' : 'rgba(220,38,38,0.1)';
+  banner.style.borderColor  = isBull ? 'rgba(22,163,74,0.35)' : 'rgba(220,38,38,0.35)';
+  ktUpdateUnitSummary();
+}
+
+// 종목 검색 자동완성 (포지션 탭용)
+(function() {
+  let _timer;
+  const inp  = document.getElementById('kt-stock-search');
+  const drop = document.getElementById('kt-stock-dropdown');
+  if (!inp) return;
+  inp.addEventListener('input', () => {
+    clearTimeout(_timer);
+    const q = inp.value.trim();
+    if (!q) { drop.style.display = 'none'; return; }
+    _timer = setTimeout(async () => {
+      drop.style.display = 'block';
+      drop.innerHTML = '<div class="search-msg">🔍 검색 중…</div>';
+      try {
+        const results = await searchKisStocks(q);
+        if (!results.length) { drop.innerHTML = '<div class="search-msg">검색 결과 없음</div>'; return; }
+        drop.innerHTML = results.slice(0, 8).map(r =>
+          `<div class="search-item" data-code="${r.code}" data-name="${r.name}">
+            <span class="search-item-name">${r.name}</span>
+            <span class="search-item-meta">${r.code}</span>
+          </div>`
+        ).join('');
+        drop.querySelectorAll('.search-item').forEach(el => {
+          el.addEventListener('click', () => ktSelectStock(el.dataset.code, el.dataset.name));
+        });
+      } catch(e) {
+        drop.innerHTML = `<div class="search-msg" style="color:var(--red);">❌ ${e.message}</div>`;
+      }
+    }, 250);
+  });
+  document.addEventListener('click', e => {
+    if (!inp.closest('.search-wrap').contains(e.target)) drop.style.display = 'none';
+  });
+})();
+
+async function ktSelectStock(code, name) {
+  document.getElementById('kt-stock-code').value = code;
+  document.getElementById('kt-stock-search').value = '';
+  document.getElementById('kt-stock-dropdown').style.display = 'none';
+  document.getElementById('kt-stock-label').textContent = `${name}  ${code}`;
+  document.getElementById('kt-stock-selected').hidden = false;
+  // ATR / 10일 최저가 자동 로딩
+  document.getElementById('kt-atr-loading').style.display = 'inline';
+  document.getElementById('kt-low10-loading').style.display = 'inline';
+  try {
+    const res  = await fetch(`${KIS_WORKER}/ohlcv?code=${code}`);
+    const data = await res.json();
+    if (data.atr)  document.getElementById('kt-atr').value  = data.atr;
+    if (data.low10) document.getElementById('kt-low10').value = data.low10;
+  } catch(e) { console.warn('ATR 자동 로딩 실패:', e); }
+  document.getElementById('kt-atr-loading').style.display  = 'none';
+  document.getElementById('kt-low10-loading').style.display = 'none';
+}
+
+function ktClearStock() {
+  document.getElementById('kt-stock-code').value = '';
+  document.getElementById('kt-stock-search').value = '';
+  document.getElementById('kt-stock-selected').hidden = true;
+  document.getElementById('kt-atr').value = '';
+  document.getElementById('kt-low10').value = '';
+}
+
+function ktPriceBox(label, val, color, sub) {
+  return `<div style="background:var(--surface1);border-radius:8px;padding:10px 10px 8px;text-align:center;">
+    <div style="font-size:10px;color:var(--fg3);margin-bottom:3px;">${label}</div>
+    <div style="font-size:14px;font-weight:700;color:${color || 'var(--fg)'};">${fmtComma(Math.round(val))}원</div>
+    ${sub ? `<div style="font-size:10px;color:var(--fg3);margin-top:2px;">${sub}</div>` : ''}
+  </div>`;
+}
+
+function ktCalculate() {
+  const { seed, riskPct, stopPct, unitCnt, maxLoss, unitAmt } = ktGetSettings();
+  const entry   = +document.getElementById('kt-entry').value || 0;
+  const qty     = +document.getElementById('kt-qty').value   || 0;
+  const atr     = +document.getElementById('kt-atr').value   || 0;
+  const atrMult = +document.getElementById('kt-atr-mult').value || 2;
+  const low10   = +document.getElementById('kt-low10').value || 0;
+
+  if (!entry) { alert('매수단가를 입력하세요'); return; }
+
+  // ── 맥스2% / R 기준 손절 & 목표가 ──
+  const stopPrice = Math.round(entry * (1 - stopPct / 100));  // -1R (손절)
+  const t1R  = Math.round(entry * (1 - stopPct / 100));       // -1R (손절)
+  const t1   = Math.round(entry * (1 + stopPct / 100));       // +1R
+  const t2   = Math.round(entry * (1 + stopPct * 2 / 100));   // +2R
+  const t3   = Math.round(entry * (1 + stopPct * 3 / 100));   // +3R
+
+  // ── ATR 기반 손절가 ──
+  const atrStop = atr ? Math.round(entry - atr * atrMult) : null;
+
+  // ── 포지션 수익/손실 시뮬 (qty 기준) ──
+  const posAmt = entry * qty;
+
+  // ── 결과 렌더 ──
+  const resultEl = document.getElementById('kt-result');
+  resultEl.hidden = false;
+
+  // 추천 유닛
+  const recBox = document.getElementById('kt-recommend-box');
+  let recUnit, recColor, recBg, recMsg;
+  if (ktMarketBull === true) {
+    recUnit = 2; recColor = 'var(--green)';
+    recBg = 'rgba(22,163,74,0.10)';
+    recMsg = '🟢 강세장 — <b>2유닛부터</b> 진입 추천';
+  } else if (ktMarketBull === false) {
+    recUnit = 1; recColor = 'var(--orange)';
+    recBg = 'rgba(234,88,12,0.10)';
+    recMsg = '🔴 약세/횡보장 — <b>1유닛</b> 진입 추천';
   } else {
-    trailEl.textContent = '입력 필요';
+    recUnit = 1; recColor = 'var(--fg2)';
+    recBg = 'rgba(100,100,100,0.08)';
+    recMsg = '❓ 장세 데이터 없음 — <b>1유닛</b> 진입 권장';
+  }
+  const recAmt = unitAmt * recUnit;
+  recBox.style.background = recBg;
+  recBox.style.border = `1px solid ${recColor}`;
+  recBox.style.borderRadius = '10px';
+  recBox.innerHTML = `<div style="font-size:13px;">${recMsg}</div>
+    ${seed ? `<div style="margin-top:6px;font-size:13px;">추천 진입금액: <b style="color:${recColor};">${fmtComma(Math.round(recAmt))}원</b> (${recUnit}유닛)</div>` : ''}`;
+
+  // 손절 & 목표가 그리드
+  document.getElementById('kt-price-grid').innerHTML = [
+    ktPriceBox('-1R 손절가', stopPrice, 'var(--red)', `-${stopPct}%`),
+    ktPriceBox('+1R 목표가', t1, 'var(--fg)', `+${stopPct}%`),
+    ktPriceBox('+2R 목표가', t2, 'var(--accent)', `+${stopPct*2}%`),
+    ktPriceBox('+3R 목표가', t3, 'var(--green)', `+${stopPct*3}%`),
+    low10 ? ktPriceBox('10일 최저가', low10, low10 <= stopPrice ? 'var(--red)' : 'var(--orange)',
+      low10 <= stopPrice ? '⚠️ 청산 신호' : '홀딩 유지') : '',
+  ].join('');
+
+  // ATR 기반 손절가
+  const atrGrid = document.getElementById('kt-atr-grid');
+  if (atr) {
+    atrGrid.innerHTML = [
+      ktPriceBox(`ATR×${atrMult} 손절가`, atrStop, 'var(--red)', `진입가 -${fmtComma(Math.round(entry-atrStop))}원`),
+      ktPriceBox('ATR (14일)', atr, 'var(--fg2)', '일간 변동폭'),
+    ].join('');
+  } else {
+    atrGrid.innerHTML = `<div style="grid-column:1/-1;font-size:12px;color:var(--fg3);padding:8px;">종목을 검색하면 ATR이 자동 입력됩니다.</div>`;
   }
 
-  // Pyramid
-  const pyrHtml = [1,2,3,4].map(n => {
-    const addPrice = entry + atr * 0.5 * (n-1);
-    return `<div class="data-row">
-      <span class="data-label">${n}차 추가 (0.5ATR×${n-1})</span>
-      <span class="data-value">${fmt(addPrice)}원</span>
-    </div>`;
-  }).join('');
-  document.getElementById('r-pyramid').innerHTML = `<div style="font-size:12px;color:var(--fg3);margin-bottom:8px;">0.5 ATR 상승마다 추가 매수 (최대 4회)</div>${pyrHtml}`;
+  // 포지션 시뮬
+  if (qty > 0) {
+    document.getElementById('kt-sim-grid').innerHTML = [
+      ktPriceBox('포지션 총액', posAmt, 'var(--fg2)', `${qty}주 × ${fmtComma(entry)}원`),
+      ktPriceBox('-1R 손절 손실', (stopPrice - entry) * qty, 'var(--red)', `${stopPct}% 손절 시`),
+      ktPriceBox('+1R 수익', (t1 - entry) * qty, 'var(--fg)', `+${stopPct}%`),
+      ktPriceBox('+3R 수익', (t3 - entry) * qty, 'var(--green)', `+${stopPct*3}%`),
+    ].join('');
+  } else {
+    document.getElementById('kt-sim-grid').innerHTML =
+      `<div style="grid-column:1/-1;font-size:12px;color:var(--fg3);padding:8px;">수량을 입력하면 수익/손실 금액을 계산합니다.</div>`;
+  }
 
-  document.getElementById('calc-result').style.display = 'block';
-});
+  // +3R 도달 시 다음 유닛 추천
+  const nextUnitBox = document.getElementById('kt-next-unit-box');
+  const nextUnit = recUnit + 1;
+  if (nextUnit <= unitCnt) {
+    const nextAmt = unitAmt * nextUnit;
+    nextUnitBox.style.display = 'block';
+    nextUnitBox.innerHTML = `<b>+3R(+${stopPct*3}%, ${fmtComma(t3)}원) 도달 시</b><br>
+      다음 매수 비중 +1유닛 → <b style="color:var(--accent);">${nextUnit}유닛</b> (${fmtComma(Math.round(nextAmt))}원) 추천`;
+  } else {
+    nextUnitBox.style.display = 'block';
+    nextUnitBox.innerHTML = `<b>+3R 도달 시</b> — 이미 최대 유닛(${unitCnt}유닛)입니다. 현재 포지션 유지.`;
+  }
+}
 
 // ─── POSITIONS ──────────────────────────────────────────────
 function renderPositions() {
@@ -3283,6 +3557,9 @@ function renderMarketBanner(data) {
   banner.style.borderColor = bull
     ? 'rgba(22,163,74,0.3)'
     : 'rgba(220,38,38,0.3)';
+
+  // 포지션 탭 장세 배너 연동
+  ktUpdateRegimeBanner(bull);
 }
 
 function renderHomeIndex(data) {
