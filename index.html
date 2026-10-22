@@ -1029,6 +1029,16 @@
           </div>
         </div>
 
+        <!-- 포지션 총액 실시간 표시 -->
+        <div id="kt-position-total-wrap" style="display:none;background:var(--surface1);border-radius:10px;padding:10px 14px;margin-top:4px;margin-bottom:2px;">
+          <div style="font-size:11px;color:var(--fg3);margin-bottom:3px;">포지션 총액</div>
+          <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+            <span id="kt-position-total-amt" style="font-size:18px;font-weight:700;color:var(--fg);"></span>
+            <span id="kt-position-total-sub" style="font-size:12px;color:var(--fg3);"></span>
+          </div>
+          <div id="kt-position-unit-gauge" style="margin-top:6px;font-size:12px;"></div>
+        </div>
+
         <!-- ATR 설정 (자동 로딩) -->
         <div class="form-row">
           <div class="form-group">
@@ -2042,7 +2052,43 @@ document.getElementById('kt-entry').addEventListener('input', () => {
   } else if (raw === '') {
     el.value = '';
   }
+  ktUpdatePositionTotal();
 });
+
+function ktUpdatePositionTotal() {
+  const entry = +(document.getElementById('kt-entry').value.replace(/,/g,'')) || 0;
+  const qty   = +document.getElementById('kt-qty').value || 0;
+  const wrap  = document.getElementById('kt-position-total-wrap');
+  if (!entry || !qty) { wrap.style.display = 'none'; return; }
+
+  const posAmt = entry * qty;
+  const { unitAmt } = ktGetSettings();
+  const unitRatio = unitAmt ? (posAmt / unitAmt) : null;
+
+  document.getElementById('kt-position-total-amt').textContent = fmtComma(posAmt) + '원';
+  document.getElementById('kt-position-total-sub').textContent = `${qty}주 × ${fmtComma(entry)}원`;
+
+  const gauge = document.getElementById('kt-position-unit-gauge');
+  if (unitAmt && unitRatio !== null) {
+    const pct = Math.min(unitRatio * 100, 100);
+    const color = unitRatio <= 1 ? 'var(--green)' : unitRatio <= 1.5 ? 'var(--orange,#f59e0b)' : 'var(--red)';
+    const label = unitRatio <= 1
+      ? `1유닛(${fmtComma(Math.round(unitAmt))}원) 이내 ✅`
+      : `1유닛 초과 ×${unitRatio.toFixed(2)} ⚠️`;
+    gauge.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span style="color:${color};font-weight:600;">${label}</span>
+      </div>
+      <div style="background:var(--border);border-radius:4px;height:6px;overflow:hidden;">
+        <div style="width:${pct}%;height:100%;background:${color};border-radius:4px;transition:width .2s;"></div>
+      </div>`;
+  } else {
+    gauge.innerHTML = '';
+  }
+  wrap.style.display = 'block';
+}
+
+document.getElementById('kt-qty').addEventListener('input', ktUpdatePositionTotal);
 
 ['kt-atr', 'kt-low10'].forEach(id => {
   document.getElementById(id).addEventListener('input', () => {
@@ -2392,6 +2438,9 @@ function ktLoadPosition(id) {
   document.getElementById('kt-atr-mult').value = p.atrMult || 2;
   document.getElementById('kt-low10').value    = p.low10 ? fmtComma(Math.round(p.low10)) : '';
 
+  // 포지션 총액 업데이트
+  ktUpdatePositionTotal();
+
   // 탭 스크롤 위로
   document.getElementById('panel-position').scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -2704,12 +2753,14 @@ async function loadHoldingPrices(force) {
     try {
       const res = await fetch(`${KIS_WORKER}/quotes?codes=${codes.join(',')}`);
       const data = await res.json();
+      console.log('[quotes] 응답:', JSON.stringify(data).slice(0, 500));
       if (data.quotes) {
         data.quotes.forEach(q => {
+          console.log('[quotes] 종목:', q.code, '현재가:', q.curr, '등락률:', q.chg, q.rate, q.pctChg, q.changeRate);
           holdings.forEach(h => {
             if (h.code === q.code) {
               h.curPrice = q.curr || h.curPrice;
-              h.dayChange = q.chg || 0;
+              h.dayChange = q.chg ?? q.rate ?? q.pctChg ?? q.changeRate ?? 0;
             }
           });
         });
@@ -2752,12 +2803,14 @@ async function loadHoldingPrices(force) {
     try {
       const res = await fetch(`${KIS_WORKER}/quotes?codes=${missingCodes.join(',')}`);
       const data = await res.json();
+      console.log('[quotes-missing] 응답:', JSON.stringify(data).slice(0, 500));
       if (data.quotes) {
         data.quotes.forEach(q => {
+          console.log('[quotes-missing] 종목:', q.code, '현재가:', q.curr, '등락률:', q.chg, q.rate, q.pctChg, q.changeRate);
           holdings.forEach(h => {
             if (h.code === q.code) {
               h.curPrice = q.curr || h.curPrice;
-              h.dayChange = q.chg || 0;
+              h.dayChange = q.chg ?? q.rate ?? q.pctChg ?? q.changeRate ?? 0;
             }
           });
         });
