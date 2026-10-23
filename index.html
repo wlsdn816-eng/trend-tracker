@@ -3880,11 +3880,16 @@ async function loadFeedData(type) {
   listEl.innerHTML = '<div style="color:var(--fg3);font-size:13px;padding:8px 0;">로딩 중…</div>';
 
   try {
-    const url = `${KIS_WORKER}/${type === 'blog' ? 'blog-feed' : 'research-feed'}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    const items = data.items || [];
+    let items = [];
+    if (type === 'research') {
+      items = await loadResearchDirect();
+    } else {
+      const url = `${KIS_WORKER}/blog-feed`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      items = data.items || [];
+    }
     if (!items.length) {
       listEl.innerHTML = '<div style="color:var(--fg3);font-size:13px;padding:8px 0;">최근 게시물이 없습니다.</div>';
       return;
@@ -3894,6 +3899,67 @@ async function loadFeedData(type) {
     listEl.innerHTML = `<div style="color:var(--fg3);font-size:12px;padding:8px 0;">불러오기 실패: ${e.message}<br><button onclick="loadFeedData('${type}')" style="margin-top:6px;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;color:var(--fg);">다시 시도</button></div>`;
     _feedLoaded[type] = false;
   }
+}
+
+// 리서치: 브라우저에서 corsproxy.io → 네이버 증권 직접 파싱
+async function loadResearchDirect() {
+  // brokerCode=15 → 한국투자증권
+  const targetUrl = 'https://finance.naver.com/research/company_list.naver?brokerCode=15';
+  const proxyUrl  = 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
+
+  const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
+  if (!res.ok) throw new Error('proxy ' + res.status);
+
+  // 네이버 증권은 EUC-KR 인코딩
+  const buf  = await res.arrayBuffer();
+  let html;
+  try   { html = new TextDecoder('euc-kr').decode(buf); }
+  catch { html = new TextDecoder('utf-8').decode(buf); }
+
+  if (!html || html.length < 500) throw new Error('empty response');
+
+  const items = [];
+
+  // 방법1: company_read 링크 + 인접 텍스트
+  const linkRx = /href="(\/research\/company_read\.n[^"]+)"[^>]*>[\s\S]{0,200}?<td[^>]*class="[^"]*title[^"]*"[^>]*>([\s\S]{0,200}?)<\/td>/g;
+  let m;
+  while ((m = linkRx.exec(html)) !== null && items.length < 15) {
+    const link  = 'https://finance.naver.com' + m[1].replace(/&amp;/g, '&');
+    const title = m[2].replace(/<[^>]+>/g, '').trim().replace(/\s+/g, ' ');
+    if (title.length < 3) continue;
+    items.push({ title, link, date: '', summary: '', company: '한투' });
+  }
+
+  // 방법2: 링크만 먼저 추출하고 주변 텍스트에서 제목 찾기
+  if (items.length === 0) {
+    const simpleRx = /href="(\/research\/company_read\.n[^"]+)"[^>]*>\s*<img[^>]*>\s*<\/a>\s*<\/td>\s*<td[^>]*>([\s\S]{0,300}?)<\/td>/g;
+    while ((m = simpleRx.exec(html)) !== null && items.length < 15) {
+      const link  = 'https://finance.naver.com' + m[1].replace(/&amp;/g, '&');
+      const title = m[2].replace(/<[^>]+>/g, '').trim().replace(/\s+/g, ' ');
+      if (title.length < 3) continue;
+      items.push({ title, link, date: '', summary: '', company: '한투' });
+    }
+  }
+
+  // 방법3: 가장 단순한 패턴
+  if (items.length === 0) {
+    const bare = /href="(\/research\/company_read\.naver\?[^"]+)"[^>]*>([^<]{5,100})</g;
+    while ((m = bare.exec(html)) !== null && items.length < 15) {
+      const link  = 'https://finance.naver.com' + m[1].replace(/&amp;/g, '&');
+      const title = m[2].trim();
+      if (title.length < 3) continue;
+      items.push({ title, link, date: '', summary: '', company: '한투' });
+    }
+  }
+
+  // 날짜 보충 — HTML 전체에서 YYYY.MM.DD 형태 추출해 순서대로 매핑
+  const dateRx  = /(\d{4}\.\d{2}\.\d{2})/g;
+  const allDates = [];
+  let dm;
+  while ((dm = dateRx.exec(html.slice(0, 60000))) !== null) allDates.push(dm[1]);
+  items.forEach((item, i) => { if (!item.date && allDates[i]) item.date = allDates[i]; });
+
+  return items;
 }
 
 function renderFeedItem(item, type) {
