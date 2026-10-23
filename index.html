@@ -880,7 +880,10 @@
       <div id="auto-in-screener" style="margin-bottom:16px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
           <h2 style="font-size:16px;font-weight:700;">🔍 자동 종목 선별</h2>
-          <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px;" onclick="loadScanResult()">새로고침</button>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-ghost" id="btn-scan-view" style="font-size:12px;padding:6px 10px;" onclick="toggleScanView()">자세히 보기</button>
+            <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px;" onclick="loadScanResult()">새로고침</button>
+          </div>
         </div>
         <!-- 조건 체크박스 필터 -->
         <div style="background:var(--surface2);border-radius:12px;padding:12px 14px;margin-bottom:10px;">
@@ -931,10 +934,13 @@
 
       <div class="section-head">
         <h2>수동 스크리너</h2>
-        <button class="btn btn-ghost" id="btn-add-screener" style="padding:6px 10px;font-size:12px;">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          종목 추가
-        </button>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <button class="btn btn-ghost" id="btn-manual-view" style="padding:6px 10px;font-size:12px;" onclick="toggleManualView()">간략히 보기</button>
+          <button class="btn btn-ghost" id="btn-add-screener" style="padding:6px 10px;font-size:12px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            종목 추가
+          </button>
+        </div>
       </div>
 
       <div class="refresh-all-bar">
@@ -1537,8 +1543,6 @@ function renderScreener() {
 
   list.innerHTML = screeners.map((s, i) => {
     const score = signalScore(s);
-    // 기본 기준 (①+②, 67점): 돌파 🔥
-    // 엄격 기준 (①+②+③, 100점): 강력 돌파 ⚡
     const isStrictBreak = score >= 100;
     const isBasicBreak  = score >= 67 && score < 100;
     const isWatch = score >= 34 && score < 67;
@@ -1549,6 +1553,27 @@ function renderScreener() {
     const pctFromHigh = s.high20 > 0 ? ((s.curr - s.high20) / s.high20 * 100).toFixed(1) : 0;
     const fillW = Math.min(100, score);
     const fillColor = (isStrictBreak || isBasicBreak) ? 'var(--green)' : isWatch ? 'var(--orange)' : 'var(--border)';
+
+    if (_manualViewCompact) {
+      return `<div class="card" style="padding:10px 14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="flex:1;min-width:0;">
+            <span class="stock-link card-title" data-stock-code="${s.ticker}" data-stock-name="${s.name||s.ticker}" style="font-size:14px;">${s.ticker}</span>
+            <span class="stock-link" data-stock-code="${s.ticker}" data-stock-name="${s.name||s.ticker}" style="font-size:11px;color:var(--fg3);margin-left:6px;">${s.name || ''}</span>
+            <div style="margin-top:5px;"><span class="badge ${badgeClass}" style="font-size:10px;">${badgeText}</span></div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;margin-left:10px;">
+            <div style="font-size:15px;font-weight:700;">${fmt(s.curr)}원</div>
+            <div style="font-size:11px;color:${parseFloat(pctFromHigh)>=0?'var(--green)':'var(--red)'}">20일고가 ${parseFloat(pctFromHigh)>=0?'+':''}${pctFromHigh}%</div>
+            <div style="display:flex;gap:4px;justify-content:flex-end;margin-top:4px;">
+              <button style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;" onclick="openOrderModal('${s.ticker}','${s.name||s.ticker}',${s.curr||0},'buy')">📈 매수</button>
+              <button class="btn btn-danger" style="padding:3px 7px;font-size:11px;" onclick="deleteScreener(${i})">삭제</button>
+            </div>
+          </div>
+        </div>
+        <div class="signal-bar" style="margin-top:8px;"><div class="signal-fill" style="width:${fillW}%;background:${fillColor};"></div></div>
+      </div>`;
+    }
 
     return `<div class="card">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px;">
@@ -3142,6 +3167,20 @@ function renderJournal() { renderJournalList(); }
 
 // ─── 자동선별 탭 ────────────────────────────────────────────
 var _scanAllResults = [];
+var _scanViewCompact = true;   // 자동: 간략히 디폴트
+var _manualViewCompact = false; // 수동: 자세히 디폴트
+
+function toggleScanView() {
+  _scanViewCompact = !_scanViewCompact;
+  document.getElementById('btn-scan-view').textContent = _scanViewCompact ? '자세히 보기' : '간략히 보기';
+  applyScreenerFilter();
+}
+
+function toggleManualView() {
+  _manualViewCompact = !_manualViewCompact;
+  document.getElementById('btn-manual-view').textContent = _manualViewCompact ? '자세히 보기' : '간략히 보기';
+  renderScreenerList();
+}
 
 async function loadScanResult() {
   const meta = document.getElementById('scan-meta');
@@ -3221,6 +3260,32 @@ function applyScreenerFilter() {
       .join('');
     const scoreCount = [f.high20,f.vol,f.near52w,f.rs].filter(Boolean).length;
     const barColor = scoreCount >= 3 ? 'var(--green)' : scoreCount === 2 ? '#f59e0b' : 'var(--fg3)';
+
+    if (_scanViewCompact) {
+      // 간략히 보기
+      return `
+      <div class="card" style="padding:10px 14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="flex:1;min-width:0;">
+            <span class="card-title" style="font-size:14px;">${r.name}</span>
+            <span style="font-size:11px;color:var(--fg3);margin-left:6px;">${r.code}</span>
+            <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:5px;">${scoreBadges || ''}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;margin-left:10px;">
+            <div style="font-size:15px;font-weight:700;">${r.curr ? r.curr.toLocaleString()+'원' : '—'}</div>
+            <div style="font-size:11px;color:${pctFromHigh!==null&&parseFloat(pctFromHigh)>=0?'var(--green)':'var(--red)'}">
+              20일고가 ${pctFromHigh!==null?(parseFloat(pctFromHigh)>=0?'+':'')+pctFromHigh+'%':'—'}
+            </div>
+            <button style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-top:4px;" onclick="openOrderModal('${r.code}','${r.name}',${r.curr||0},'buy')">📈 매수</button>
+          </div>
+        </div>
+        <div class="signal-bar" style="margin-top:8px;">
+          <div class="signal-fill" style="width:${scoreCount*25}%;background:${barColor};"></div>
+        </div>
+      </div>`;
+    }
+
+    // 자세히 보기
     return `
     <div class="card">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px;">
