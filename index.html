@@ -881,7 +881,6 @@
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
           <h2 style="font-size:16px;font-weight:700;">🔍 자동 종목 선별</h2>
           <div style="display:flex;gap:6px;">
-            <button class="btn btn-ghost" id="btn-scan-view" style="font-size:12px;padding:6px 10px;" onclick="toggleScanView()">자세히 보기</button>
             <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px;" onclick="loadScanResult()">새로고침</button>
           </div>
         </div>
@@ -935,7 +934,6 @@
       <div class="section-head">
         <h2>수동 스크리너</h2>
         <div style="display:flex;gap:6px;align-items:center;">
-          <button class="btn btn-ghost" id="btn-manual-view" style="padding:6px 10px;font-size:12px;" onclick="toggleManualView()">간략히 보기</button>
           <button class="btn btn-ghost" id="btn-add-screener" style="padding:6px 10px;font-size:12px;">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             종목 추가
@@ -1554,66 +1552,58 @@ function renderScreener() {
     const fillW = Math.min(100, score);
     const fillColor = (isStrictBreak || isBasicBreak) ? 'var(--green)' : isWatch ? 'var(--orange)' : 'var(--border)';
 
-    if (_manualViewCompact) {
-      return `<div class="card" style="padding:10px 14px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-          <div style="flex:1;min-width:0;">
-            <span class="stock-link card-title" data-stock-code="${s.ticker}" data-stock-name="${s.name||s.ticker}" style="font-size:14px;">${s.ticker}</span>
-            <span class="stock-link" data-stock-code="${s.ticker}" data-stock-name="${s.name||s.ticker}" style="font-size:11px;color:var(--fg3);margin-left:6px;">${s.name || ''}</span>
-            <div style="margin-top:5px;"><span class="badge ${badgeClass}" style="font-size:10px;">${badgeText}</span></div>
-          </div>
-          <div style="text-align:right;flex-shrink:0;margin-left:10px;">
-            <div style="font-size:15px;font-weight:700;">${fmt(s.curr)}원</div>
-            <div style="font-size:11px;color:${parseFloat(pctFromHigh)>=0?'var(--green)':'var(--red)'}">20일고가 ${parseFloat(pctFromHigh)>=0?'+':''}${pctFromHigh}%</div>
-            <div style="display:flex;gap:4px;justify-content:flex-end;margin-top:4px;">
-              <button style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;" onclick="openOrderModal('${s.ticker}','${s.name||s.ticker}',${s.curr||0},'buy')">📈 매수</button>
-              <button class="btn btn-danger" style="padding:3px 7px;font-size:11px;" onclick="deleteScreener(${i})">삭제</button>
-            </div>
-          </div>
+    const isManualExpanded = _manualExpandedSet.has(i);
+    const manualDetailRows = isManualExpanded ? `
+      <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
+        <div class="data-row">
+          <span class="data-label">현재가</span>
+          <span class="data-value">${fmt(s.curr)}원</span>
         </div>
-        <div class="signal-bar" style="margin-top:8px;"><div class="signal-fill" style="width:${fillW}%;background:${fillColor};"></div></div>
-      </div>`;
-    }
+        <div class="data-row">
+          <span class="data-label">20일 신고가</span>
+          <span class="data-value">${fmt(s.high20)}원 <span style="font-size:11px;color:${pctFromHigh >= 0 ? 'var(--green)' : 'var(--red)'}">(${pctFromHigh >= 0 ? '+' : ''}${pctFromHigh}%)</span></span>
+        </div>
+        <div class="data-row">
+          <span class="data-label">거래량 / 평균</span>
+          <span class="data-value">${fmt(s.vol)} / ${fmt(s.avgVol)} <span style="font-size:11px;color:var(--fg3)">(${s.avgVol > 0 ? (s.vol/s.avgVol).toFixed(1) : '—'}배)</span></span>
+        </div>
+        <div class="data-row">
+          <span class="data-label">ATR (14일)</span>
+          <span class="data-value">${fmt(s.atr)}원</span>
+        </div>
+        <div class="data-row">
+          <span class="data-label">52주 신고가</span>
+          <span class="data-value">${s.high52 ? fmt(s.high52)+'원' : '—'} ${s.high52 && s.curr ? '<span style="font-size:11px;color:'+(s.curr>=s.high52*0.9?'var(--green)':'var(--fg3)')+'">('+(s.curr/s.high52*100).toFixed(1)+'%)</span>' : ''}</span>
+        </div>
+        <div class="data-row">
+          <span class="data-label">10일 최저가</span>
+          <span class="data-value orange">${s.low10 ? fmt(s.low10)+'원' : '—'}</span>
+        </div>
+        <div style="display:flex;gap:4px;justify-content:flex-end;margin-top:8px;">
+          <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px;" onclick="toggleAtrCalc(${i})">계산</button>
+          <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px;" onclick="editScreener(${i})">편집</button>
+          <button class="btn btn-danger" style="padding:3px 7px;font-size:11px;" onclick="deleteScreener(${i})">삭제</button>
+        </div>
+      </div>` : '';
 
-    return `<div class="card">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px;">
-        <div>
-          <span class="stock-link card-title" data-stock-code="${s.ticker}" data-stock-name="${s.name||s.ticker}">${s.ticker}</span>
-          <span class="stock-link" data-stock-code="${s.ticker}" data-stock-name="${s.name||s.ticker}" style="font-size:12px;color:var(--fg3);margin-left:6px;">${s.name || ''}</span>
+    return `<div class="card" style="padding:10px 14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="flex:1;min-width:0;">
+          <span class="stock-link card-title" data-stock-code="${s.ticker}" data-stock-name="${s.name||s.ticker}" style="font-size:14px;">${s.ticker}</span>
+          <span class="stock-link" data-stock-code="${s.ticker}" data-stock-name="${s.name||s.ticker}" style="font-size:11px;color:var(--fg3);margin-left:6px;">${s.name || ''}</span>
+          <div style="margin-top:5px;"><span class="badge ${badgeClass}" style="font-size:10px;">${badgeText}</span></div>
         </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
-          <span class="badge ${badgeClass}">${badgeText}</span>
-          <button style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;" onclick="openOrderModal('${s.ticker}','${s.name||s.ticker}',${s.curr||0},'buy')">📈 매수</button>
-          <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px;" onclick="toggleAtrCalc(${i})">계산</button>
-          <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px;" onclick="editScreener(${i})">편집</button>
-          <button class="btn btn-danger" style="padding:4px 8px;font-size:11px;" onclick="deleteScreener(${i})">삭제</button>
+        <div style="text-align:right;flex-shrink:0;margin-left:10px;">
+          <div style="font-size:15px;font-weight:700;">${fmt(s.curr)}원</div>
+          <div style="font-size:11px;color:${parseFloat(pctFromHigh)>=0?'var(--green)':'var(--red)'}">20일고가 ${parseFloat(pctFromHigh)>=0?'+':''}${pctFromHigh}%</div>
+          <div style="display:flex;gap:4px;justify-content:flex-end;margin-top:4px;">
+            <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px;" onclick="toggleManualCard(${i})">${isManualExpanded?'간략히 ▲':'자세히 ▼'}</button>
+            <button style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;" onclick="openOrderModal('${s.ticker}','${s.name||s.ticker}',${s.curr||0},'buy')">📈 매수</button>
+          </div>
         </div>
       </div>
-      <div class="data-row">
-        <span class="data-label">현재가</span>
-        <span class="data-value">${fmt(s.curr)}원</span>
-      </div>
-      <div class="data-row">
-        <span class="data-label">20일 신고가</span>
-        <span class="data-value">${fmt(s.high20)}원 <span style="font-size:11px;color:${pctFromHigh >= 0 ? 'var(--green)' : 'var(--red)'}">(${pctFromHigh >= 0 ? '+' : ''}${pctFromHigh}%)</span></span>
-      </div>
-      <div class="data-row">
-        <span class="data-label">거래량 / 평균</span>
-        <span class="data-value">${fmt(s.vol)} / ${fmt(s.avgVol)} <span style="font-size:11px;color:var(--fg3)">(${s.avgVol > 0 ? (s.vol/s.avgVol).toFixed(1) : '—'}배)</span></span>
-      </div>
-      <div class="data-row">
-        <span class="data-label">ATR (14일)</span>
-        <span class="data-value">${fmt(s.atr)}원</span>
-      </div>
-      <div class="data-row">
-        <span class="data-label">52주 신고가</span>
-        <span class="data-value">${s.high52 ? fmt(s.high52)+'원' : '—'} ${s.high52 && s.curr ? '<span style="font-size:11px;color:'+(s.curr>=s.high52*0.9?'var(--green)':'var(--fg3)')+'">('+(s.curr/s.high52*100).toFixed(1)+'%)</span>' : ''}</span>
-      </div>
-      <div class="data-row">
-        <span class="data-label">10일 최저가</span>
-        <span class="data-value orange">${s.low10 ? fmt(s.low10)+'원' : '—'}</span>
-      </div>
-      <div class="signal-bar">
+      ${manualDetailRows}
+      <div class="signal-bar" style="margin-top:8px;">
         <div class="signal-fill" style="width:${fillW}%;background:${fillColor};"></div>
       </div>
       <div id="atr-calc-${i}" hidden style="margin-top:12px;padding:12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">
@@ -3167,18 +3157,18 @@ function renderJournal() { renderJournalList(); }
 
 // ─── 자동선별 탭 ────────────────────────────────────────────
 var _scanAllResults = [];
-var _scanViewCompact = true;   // 자동: 간략히 디폴트
-var _manualViewCompact = false; // 수동: 자세히 디폴트
+var _scanExpandedSet = new Set();   // 자동: 펼쳐진 카드 코드
+var _manualExpandedSet = new Set(); // 수동: 펼쳐진 카드 인덱스
 
-function toggleScanView() {
-  _scanViewCompact = !_scanViewCompact;
-  document.getElementById('btn-scan-view').textContent = _scanViewCompact ? '자세히 보기' : '간략히 보기';
+window.toggleScanCard = (code) => {
+  if (_scanExpandedSet.has(code)) _scanExpandedSet.delete(code);
+  else _scanExpandedSet.add(code);
   applyScreenerFilter();
 }
 
-function toggleManualView() {
-  _manualViewCompact = !_manualViewCompact;
-  document.getElementById('btn-manual-view').textContent = _manualViewCompact ? '자세히 보기' : '간략히 보기';
+window.toggleManualCard = (i) => {
+  if (_manualExpandedSet.has(i)) _manualExpandedSet.delete(i);
+  else _manualExpandedSet.add(i);
   renderScreenerList();
 }
 
@@ -3261,65 +3251,55 @@ function applyScreenerFilter() {
     const scoreCount = [f.high20,f.vol,f.near52w,f.rs].filter(Boolean).length;
     const barColor = scoreCount >= 3 ? 'var(--green)' : scoreCount === 2 ? '#f59e0b' : 'var(--fg3)';
 
-    if (_scanViewCompact) {
-      // 간략히 보기
-      return `
-      <div class="card" style="padding:10px 14px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-          <div style="flex:1;min-width:0;">
-            <span class="card-title" style="font-size:14px;">${r.name}</span>
-            <span style="font-size:11px;color:var(--fg3);margin-left:6px;">${r.code}</span>
-            <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:5px;">${scoreBadges || ''}</div>
-          </div>
-          <div style="text-align:right;flex-shrink:0;margin-left:10px;">
-            <div style="font-size:15px;font-weight:700;">${r.curr ? r.curr.toLocaleString()+'원' : '—'}</div>
-            <div style="font-size:11px;color:${pctFromHigh!==null&&parseFloat(pctFromHigh)>=0?'var(--green)':'var(--red)'}">
-              20일고가 ${pctFromHigh!==null?(parseFloat(pctFromHigh)>=0?'+':'')+pctFromHigh+'%':'—'}
-            </div>
-            <button style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-top:4px;" onclick="openOrderModal('${r.code}','${r.name}',${r.curr||0},'buy')">📈 매수</button>
-          </div>
+    const isExpanded = _scanExpandedSet.has(r.code);
+    const detailRows = isExpanded ? `
+      <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
+        <div class="data-row">
+          <span class="data-label">현재가</span>
+          <span class="data-value">${r.curr ? r.curr.toLocaleString()+'원' : '—'}</span>
         </div>
-        <div class="signal-bar" style="margin-top:8px;">
-          <div class="signal-fill" style="width:${scoreCount*25}%;background:${barColor};"></div>
+        <div class="data-row">
+          <span class="data-label">20일 신고가</span>
+          <span class="data-value">${r.high20 ? r.high20.toLocaleString()+'원' : '—'}${pctFromHigh !== null ? ` <span style="font-size:11px;color:${parseFloat(pctFromHigh)>=0?'var(--green)':'var(--red)'}">(${parseFloat(pctFromHigh)>=0?'+':''}${pctFromHigh}%)</span>` : ''}</span>
         </div>
-      </div>`;
-    }
+        <div class="data-row">
+          <span class="data-label">거래량 / 평균</span>
+          <span class="data-value">${r.todayVol ? r.todayVol.toLocaleString() : '—'} / ${r.avgVol ? r.avgVol.toLocaleString() : '—'}${volRatio ? ` <span style="font-size:11px;color:var(--fg3)">(${volRatio}배)</span>` : ''}</span>
+        </div>
+        <div class="data-row">
+          <span class="data-label">52주 신고가</span>
+          <span class="data-value">${r.high52 ? r.high52.toLocaleString()+'원' : '—'}${pct52 ? ` <span style="font-size:11px;color:${parseFloat(pct52)>=90?'var(--green)':'var(--fg3)'}">(${pct52}%)</span>` : ''}</span>
+        </div>
+        <div class="data-row">
+          <span class="data-label">RS (3개월)</span>
+          <span class="data-value" style="color:${(r.rs3m||0)>0?'var(--green)':'var(--red)'}">${r.rs3m != null ? (r.rs3m > 0 ? '+' : '')+r.rs3m+'%' : '—'}</span>
+        </div>
+        <div class="data-row">
+          <span class="data-label">ATR (14일)</span>
+          <span class="data-value">${r.atr ? r.atr.toLocaleString()+'원' : '—'}</span>
+        </div>
+      </div>` : '';
 
-    // 자세히 보기
     return `
-    <div class="card">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px;">
-        <div>
-          <span class="card-title">${r.name}</span>
-          <span style="font-size:12px;color:var(--fg3);margin-left:6px;">${r.code}</span>
+    <div class="card" style="padding:10px 14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="flex:1;min-width:0;">
+          <span class="card-title" style="font-size:14px;">${r.name}</span>
+          <span style="font-size:11px;color:var(--fg3);margin-left:6px;">${r.code}</span>
+          <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:5px;">${scoreBadges || ''}</div>
         </div>
-        <button style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;" onclick="openOrderModal('${r.code}','${r.name}',${r.curr||0},'buy')">📈 매수</button>
+        <div style="text-align:right;flex-shrink:0;margin-left:10px;">
+          <div style="font-size:15px;font-weight:700;">${r.curr ? r.curr.toLocaleString()+'원' : '—'}</div>
+          <div style="font-size:11px;color:${pctFromHigh!==null&&parseFloat(pctFromHigh)>=0?'var(--green)':'var(--red)'}">
+            20일고가 ${pctFromHigh!==null?(parseFloat(pctFromHigh)>=0?'+':'')+pctFromHigh+'%':'—'}
+          </div>
+          <div style="display:flex;gap:4px;justify-content:flex-end;margin-top:4px;">
+            <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px;" onclick="toggleScanCard('${r.code}')">${isExpanded?'간략히 ▲':'자세히 ▼'}</button>
+            <button style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;" onclick="openOrderModal('${r.code}','${r.name}',${r.curr||0},'buy')">📈 매수</button>
+          </div>
+        </div>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">${scoreBadges || '<span style="font-size:11px;color:var(--fg3);">—</span>'}</div>
-      <div class="data-row">
-        <span class="data-label">현재가</span>
-        <span class="data-value">${r.curr ? r.curr.toLocaleString()+'원' : '—'}</span>
-      </div>
-      <div class="data-row">
-        <span class="data-label">20일 신고가</span>
-        <span class="data-value">${r.high20 ? r.high20.toLocaleString()+'원' : '—'}${pctFromHigh !== null ? ` <span style="font-size:11px;color:${parseFloat(pctFromHigh)>=0?'var(--green)':'var(--red)'}">(${parseFloat(pctFromHigh)>=0?'+':''}${pctFromHigh}%)</span>` : ''}</span>
-      </div>
-      <div class="data-row">
-        <span class="data-label">거래량 / 평균</span>
-        <span class="data-value">${r.todayVol ? r.todayVol.toLocaleString() : '—'} / ${r.avgVol ? r.avgVol.toLocaleString() : '—'}${volRatio ? ` <span style="font-size:11px;color:var(--fg3)">(${volRatio}배)</span>` : ''}</span>
-      </div>
-      <div class="data-row">
-        <span class="data-label">52주 신고가</span>
-        <span class="data-value">${r.high52 ? r.high52.toLocaleString()+'원' : '—'}${pct52 ? ` <span style="font-size:11px;color:${parseFloat(pct52)>=90?'var(--green)':'var(--fg3)'}">(${pct52}%)</span>` : ''}</span>
-      </div>
-      <div class="data-row">
-        <span class="data-label">RS (3개월)</span>
-        <span class="data-value" style="color:${(r.rs3m||0)>0?'var(--green)':'var(--red)'}">${r.rs3m != null ? (r.rs3m > 0 ? '+' : '')+r.rs3m+'%' : '—'}</span>
-      </div>
-      <div class="data-row">
-        <span class="data-label">ATR (14일)</span>
-        <span class="data-value">${r.atr ? r.atr.toLocaleString()+'원' : '—'}</span>
-      </div>
+      ${detailRows}
       <div class="signal-bar" style="margin-top:8px;">
         <div class="signal-fill" style="width:${scoreCount*25}%;background:${barColor};"></div>
       </div>
