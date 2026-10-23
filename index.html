@@ -3169,7 +3169,7 @@ window.toggleScanCard = (code) => {
 window.toggleManualCard = (i) => {
   if (_manualExpandedSet.has(i)) _manualExpandedSet.delete(i);
   else _manualExpandedSet.add(i);
-  renderScreenerList();
+  renderScreener();
 }
 
 async function loadScanResult() {
