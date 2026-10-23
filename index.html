@@ -882,19 +882,28 @@
           <h2 style="font-size:16px;font-weight:700;">🔍 자동 종목 선별</h2>
           <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px;" onclick="loadScanResult()">새로고침</button>
         </div>
-        <!-- 모드 토글 -->
-        <div style="display:flex;background:var(--surface2);border-radius:10px;padding:3px;margin-bottom:12px;">
-          <button id="toggle-basic" onclick="setScanMode('basic')"
-            style="flex:1;border:none;border-radius:8px;padding:7px 0;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;background:var(--accent);color:#fff;">
-            📊 기본 (2조건)
-          </button>
-          <button id="toggle-strict" onclick="setScanMode('strict')"
-            style="flex:1;border:none;border-radius:8px;padding:7px 0;font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;background:transparent;color:var(--fg2);">
-            🎯 엄격 (3조건)
-          </button>
-        </div>
-        <div style="font-size:11px;color:var(--fg2);margin-bottom:10px;" id="scan-mode-desc">
-          기본: 20일 신고가 돌파 + 거래량 1.5배
+        <!-- 조건 체크박스 필터 -->
+        <div style="background:var(--surface2);border-radius:12px;padding:12px 14px;margin-bottom:10px;">
+          <div style="font-size:12px;font-weight:700;color:var(--fg2);margin-bottom:10px;">🎛️ 스크리닝 조건 선택 (AND 조합)</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;background:var(--surface);border-radius:8px;border:1.5px solid var(--border);" id="lbl-cond-high20">
+              <input type="checkbox" id="cond-high20" checked onchange="applyScreenerFilter()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
+              <span style="font-size:12px;font-weight:600;">📈 20일 신고가 돌파</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;background:var(--surface);border-radius:8px;border:1.5px solid var(--border);" id="lbl-cond-vol">
+              <input type="checkbox" id="cond-vol" onchange="applyScreenerFilter()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
+              <span style="font-size:12px;font-weight:600;">📊 거래량 1.5배 이상</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;background:var(--surface);border-radius:8px;border:1.5px solid var(--border);" id="lbl-cond-near52w">
+              <input type="checkbox" id="cond-near52w" onchange="applyScreenerFilter()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
+              <span style="font-size:12px;font-weight:600;">🏔️ 52주 고점 -10% 이내</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;background:var(--surface);border-radius:8px;border:1.5px solid var(--border);" id="lbl-cond-rs">
+              <input type="checkbox" id="cond-rs" onchange="applyScreenerFilter()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
+              <span style="font-size:12px;font-weight:600;">💪 RS 강세 (코스피 초과)</span>
+            </label>
+          </div>
+          <div style="font-size:11px;color:var(--fg3);margin-top:8px;" id="scan-filter-desc">체크된 조건을 모두 충족하는 종목만 표시</div>
         </div>
         <div id="scan-meta" style="font-size:12px;color:var(--fg2);margin-bottom:12px;"></div>
         <!-- 카카오 알림 설정 카드 -->
@@ -3132,20 +3141,7 @@ window.deleteJournalEntry = (i) => {
 function renderJournal() { renderJournalList(); }
 
 // ─── 자동선별 탭 ────────────────────────────────────────────
-var scanMode = 'basic';
-
-function setScanMode(mode) {
-  scanMode = mode;
-  const isBasic = mode === 'basic';
-  document.getElementById('toggle-basic').style.background  = isBasic ? 'var(--accent)' : 'transparent';
-  document.getElementById('toggle-basic').style.color       = isBasic ? '#000' : 'var(--fg-muted)';
-  document.getElementById('toggle-strict').style.background = isBasic ? 'transparent' : 'var(--accent)';
-  document.getElementById('toggle-strict').style.color      = isBasic ? 'var(--fg-muted)' : '#000';
-  document.getElementById('scan-mode-desc').textContent     = isBasic
-    ? '기본: 20일 신고가 돌파 + 거래량 1.5배'
-    : '엄격: 20일 신고가 돌파 + 거래량 1.5배 + 52주 고점 -10% 이내';
-  loadScanResult();
-}
+var _scanAllResults = [];
 
 async function loadScanResult() {
   const meta = document.getElementById('scan-meta');
@@ -3153,74 +3149,117 @@ async function loadScanResult() {
   meta.textContent = '불러오는 중...';
   list.innerHTML = '';
   try {
-    const res = await fetch(`${KIS_WORKER}/scan-result?mode=${scanMode}`);
+    const res = await fetch(`${KIS_WORKER}/scan-result?mode=basic`);
     const data = await res.json();
     if (data.error) {
       meta.textContent = '스캔 결과 없음. 평일 장 마감 후 자동 갱신됩니다.';
       return;
     }
     const d = new Date(data.scannedAt);
-    meta.textContent = `📅 스캔: ${d.toLocaleDateString('ko-KR')} ${d.toLocaleTimeString('ko-KR', {hour:'2-digit',minute:'2-digit'})} · 전체 ${data.total.toLocaleString()}종목 중 ${data.hits}개 신호`;
-
-    if (!data.results || data.results.length === 0) {
-      list.innerHTML = '<p style="text-align:center;color:var(--fg-muted);padding:40px 0;">신호 종목 없음</p>';
-      return;
-    }
-
-    list.innerHTML = data.results.map((r, i) => {
-      const isStrict = r.score >= 100;
-      const isBasic  = r.score >= 50 && r.score < 100;
-      const badgeText  = isStrict ? '강력 돌파 ⚡' : '돌파 🔥';
-      const badgeColor = '#22c55e';
-      const fillW = Math.min(100, r.score);
-      const fillColor = isStrict ? 'var(--green)' : '#f59e0b';
-      const pctFromHigh = r.high20 > 0 ? ((r.curr - r.high20) / r.high20 * 100).toFixed(1) : null;
-      const volRatio = r.avgVol > 0 ? (r.todayVol / r.avgVol).toFixed(1) : null;
-      const pct52 = r.high52 > 0 ? (r.curr / r.high52 * 100).toFixed(1) : null;
-      return `
-      <div class="card">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px;">
-          <div>
-            <span class="card-title">${r.name}</span>
-            <span style="font-size:12px;color:var(--fg3);margin-left:6px;">${r.code}</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
-            <span style="background:${badgeColor}22;color:${badgeColor};border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;">${badgeText}</span>
-            <button style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;" onclick="openOrderModal('${r.code}','${r.name}',${r.curr||0},'buy')">📈 매수</button>
-          </div>
-        </div>
-        <div class="data-row">
-          <span class="data-label">현재가</span>
-          <span class="data-value">${r.curr ? r.curr.toLocaleString()+'원' : '—'}</span>
-        </div>
-        <div class="data-row">
-          <span class="data-label">20일 신고가</span>
-          <span class="data-value">${r.high20 ? r.high20.toLocaleString()+'원' : '—'}${pctFromHigh !== null ? ` <span style="font-size:11px;color:${parseFloat(pctFromHigh)>=0?'var(--green)':'var(--red)'}">(${parseFloat(pctFromHigh)>=0?'+':''}${pctFromHigh}%)</span>` : ''}</span>
-        </div>
-        <div class="data-row">
-          <span class="data-label">거래량 / 평균</span>
-          <span class="data-value">${r.todayVol ? r.todayVol.toLocaleString() : '—'} / ${r.avgVol ? r.avgVol.toLocaleString() : '—'}${volRatio ? ` <span style="font-size:11px;color:var(--fg3)">(${volRatio}배)</span>` : ''}</span>
-        </div>
-        <div class="data-row">
-          <span class="data-label">52주 신고가</span>
-          <span class="data-value">${r.high52 ? r.high52.toLocaleString()+'원' : '—'}${pct52 ? ` <span style="font-size:11px;color:${parseFloat(pct52)>=90?'var(--green)':'var(--fg3)'}">(${pct52}%)</span>` : ''}</span>
-        </div>
-        <div class="data-row">
-          <span class="data-label">ATR (14일)</span>
-          <span class="data-value">${r.atr ? r.atr.toLocaleString()+'원' : '—'}</span>
-        </div>
-        <div class="data-row">
-          <span class="data-label">신호 점수</span>
-          <span class="data-value" style="font-weight:700;color:${fillColor};">${r.score}점</span>
-        </div>
-        <div class="signal-bar" style="margin-top:8px;">
-          <div class="signal-fill" style="width:${fillW}%;background:${fillColor};"></div>
-        </div>
-      </div>`;
-    }).join('');
+    const kospiInfo = data.kospiRs3m != null ? ` · 코스피 3개월 ${data.kospiRs3m.toFixed(1)}%` : '';
+    meta.textContent = `📅 스캔: ${d.toLocaleDateString('ko-KR')} ${d.toLocaleTimeString('ko-KR', {hour:'2-digit',minute:'2-digit'})} · 전체 ${data.total.toLocaleString()}종목 중 ${data.hits}개 신호${kospiInfo}`;
+    _scanAllResults = data.results || [];
+    applyScreenerFilter();
   } catch(e) {
     meta.textContent = '오류: ' + e.message;
   }
+}
+
+function applyScreenerFilter() {
+  const list = document.getElementById('scan-list');
+  const useHigh20  = document.getElementById('cond-high20')?.checked  ?? true;
+  const useVol     = document.getElementById('cond-vol')?.checked     ?? false;
+  const useNear52w = document.getElementById('cond-near52w')?.checked ?? false;
+  const useRs      = document.getElementById('cond-rs')?.checked      ?? false;
+  const anyChecked = useHigh20 || useVol || useNear52w || useRs;
+
+  const filtered = _scanAllResults.filter(r => {
+    if (!anyChecked) return true;
+    const f = r.flags || {};
+    if (useHigh20  && !f.high20)  return false;
+    if (useVol     && !f.vol)     return false;
+    if (useNear52w && !f.near52w) return false;
+    if (useRs      && !f.rs)      return false;
+    return true;
+  });
+
+  const desc = document.getElementById('scan-filter-desc');
+  if (desc) desc.textContent = anyChecked
+    ? `체크된 조건을 모두 충족하는 종목만 표시 · ${filtered.length}개`
+    : `전체 신호 종목 표시 · ${filtered.length}개`;
+
+  // 체크박스 라벨 active 스타일
+  ['high20','vol','near52w','rs'].forEach(k => {
+    const lbl = document.getElementById(`lbl-cond-${k}`);
+    const chk = document.getElementById(`cond-${k}`);
+    if (lbl && chk) {
+      lbl.style.background = chk.checked ? 'var(--accent)22' : 'var(--surface2)';
+      lbl.style.borderColor = chk.checked ? 'var(--accent)' : 'var(--border)';
+    }
+  });
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<p style="text-align:center;color:var(--fg-muted);padding:40px 0;">조건에 맞는 종목 없음</p>';
+    return;
+  }
+
+  const FLAG_BADGES = {
+    high20:  { label: '20일 신고가', color: '#22c55e' },
+    vol:     { label: '거래량 1.5배', color: '#3b82f6' },
+    near52w: { label: '52주 고점권', color: '#f59e0b' },
+    rs:      { label: 'RS 강세',     color: '#a855f7' },
+  };
+
+  list.innerHTML = filtered.map(r => {
+    const f = r.flags || {};
+    const pctFromHigh = r.high20 > 0 ? ((r.curr - r.high20) / r.high20 * 100).toFixed(1) : null;
+    const volRatio    = r.avgVol > 0  ? (r.todayVol / r.avgVol).toFixed(1) : null;
+    const pct52       = r.high52 > 0  ? (r.curr / r.high52 * 100).toFixed(1) : null;
+    const scoreBadges = Object.entries(FLAG_BADGES)
+      .filter(([k]) => f[k])
+      .map(([, b]) => `<span style="background:${b.color}22;color:${b.color};border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700;">${b.label}</span>`)
+      .join('');
+    const scoreCount = [f.high20,f.vol,f.near52w,f.rs].filter(Boolean).length;
+    const barColor = scoreCount >= 3 ? 'var(--green)' : scoreCount === 2 ? '#f59e0b' : 'var(--fg3)';
+    return `
+    <div class="card">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px;">
+        <div>
+          <span class="card-title">${r.name}</span>
+          <span style="font-size:12px;color:var(--fg3);margin-left:6px;">${r.code}</span>
+        </div>
+        <button style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;" onclick="openOrderModal('${r.code}','${r.name}',${r.curr||0},'buy')">📈 매수</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">${scoreBadges || '<span style="font-size:11px;color:var(--fg3);">—</span>'}</div>
+      <div class="data-row">
+        <span class="data-label">현재가</span>
+        <span class="data-value">${r.curr ? r.curr.toLocaleString()+'원' : '—'}</span>
+      </div>
+      <div class="data-row">
+        <span class="data-label">20일 신고가</span>
+        <span class="data-value">${r.high20 ? r.high20.toLocaleString()+'원' : '—'}${pctFromHigh !== null ? ` <span style="font-size:11px;color:${parseFloat(pctFromHigh)>=0?'var(--green)':'var(--red)'}">(${parseFloat(pctFromHigh)>=0?'+':''}${pctFromHigh}%)</span>` : ''}</span>
+      </div>
+      <div class="data-row">
+        <span class="data-label">거래량 / 평균</span>
+        <span class="data-value">${r.todayVol ? r.todayVol.toLocaleString() : '—'} / ${r.avgVol ? r.avgVol.toLocaleString() : '—'}${volRatio ? ` <span style="font-size:11px;color:var(--fg3)">(${volRatio}배)</span>` : ''}</span>
+      </div>
+      <div class="data-row">
+        <span class="data-label">52주 신고가</span>
+        <span class="data-value">${r.high52 ? r.high52.toLocaleString()+'원' : '—'}${pct52 ? ` <span style="font-size:11px;color:${parseFloat(pct52)>=90?'var(--green)':'var(--fg3)'}">(${pct52}%)</span>` : ''}</span>
+      </div>
+      <div class="data-row">
+        <span class="data-label">RS (3개월)</span>
+        <span class="data-value" style="color:${(r.rs3m||0)>0?'var(--green)':'var(--red)'}">${r.rs3m != null ? (r.rs3m > 0 ? '+' : '')+r.rs3m+'%' : '—'}</span>
+      </div>
+      <div class="data-row">
+        <span class="data-label">ATR (14일)</span>
+        <span class="data-value">${r.atr ? r.atr.toLocaleString()+'원' : '—'}</span>
+      </div>
+      <div class="signal-bar" style="margin-top:8px;">
+        <div class="signal-fill" style="width:${scoreCount*25}%;background:${barColor};"></div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 // ─── 카카오 알림 설정 ────────────────────────────────────────
