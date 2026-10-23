@@ -973,11 +973,8 @@
             </select>
           </div>
           <div class="form-group">
-            <label class="form-label">유닛 분할 수</label>
-            <select class="form-input" id="kt-units">
-              <option value="3" selected>3분할</option>
-              <option value="4">4분할</option>
-            </select>
+            <label class="form-label">분할 수</label>
+            <div class="form-input" style="display:flex;align-items:center;background:var(--surface2);color:var(--fg3);font-size:13px;">5분할 고정</div>
           </div>
         </div>
 
@@ -1991,30 +1988,25 @@ let ktMarketBull = null; // true=강세, false=약세/횡보, null=미확인
 const KT_SEED_KEY = 'kt_seed';
 const KT_RISK_KEY = 'kt_risk';
 const KT_STOP_KEY = 'kt_stop';
-const KT_UNIT_KEY = 'kt_units';
-
 // 초기값 복원
 (function ktRestoreSettings() {
   const s = localStorage.getItem(KT_SEED_KEY);
   const r = localStorage.getItem(KT_RISK_KEY);
   const sp = localStorage.getItem(KT_STOP_KEY);
-  const u = localStorage.getItem(KT_UNIT_KEY);
   if (s) { const n = +s; document.getElementById('kt-seed').value = n ? fmtComma(n) : s; }
   if (r) document.getElementById('kt-risk').value = r;
   if (sp) document.getElementById('kt-stoppct').value = sp;
-  if (u) document.getElementById('kt-units').value = u;
   // 저장 목록 초기 렌더 (함수 정의 후 호출)
   setTimeout(() => { if (typeof ktRenderSavedList === 'function') ktRenderSavedList(); }, 0);
 })();
 
 // 설정 변경 시 저장 + 요약 업데이트
-['kt-seed','kt-risk','kt-stoppct','kt-units'].forEach(id => {
+['kt-seed','kt-risk','kt-stoppct'].forEach(id => {
   const el = document.getElementById(id);
   if (el) el.addEventListener('change', () => {
     if (id === 'kt-seed')    localStorage.setItem(KT_SEED_KEY, el.value.replace(/,/g,''));
     if (id === 'kt-risk')    localStorage.setItem(KT_RISK_KEY, el.value);
     if (id === 'kt-stoppct') localStorage.setItem(KT_STOP_KEY, el.value);
-    if (id === 'kt-units')   localStorage.setItem(KT_UNIT_KEY, el.value);
     ktUpdateUnitSummary();
   });
 });
@@ -2109,10 +2101,10 @@ function ktGetSettings() {
   const seed      = +(document.getElementById('kt-seed').value.replace(/,/g,'')) || 0;
   const riskPct   = +document.getElementById('kt-risk').value || 2;
   const stopPct   = +document.getElementById('kt-stoppct').value || 8;
-  const unitCnt   = +document.getElementById('kt-units').value || 3;
+  const unitCnt   = 5;                               // 5분할 고정
   const maxLoss   = seed * riskPct / 100;            // 매매당 최대 허용 손실금 (예: 1억×2%=200만)
-  const totalAmt  = maxLoss / (stopPct / 100);       // 1회 매매 총 투자금 (예: 200만÷8%=2,500만)
-  const unitAmt   = totalAmt / unitCnt;              // 1유닛 금액 (예: 2,500만÷4=625만)
+  const totalAmt  = seed * 0.25;                     // 종목당 최대 매수금 = 시드×25% 고정 (예: 1억×25%=2,500만)
+  const unitAmt   = totalAmt / unitCnt;              // 1유닛 금액 = 종목당 최대÷5 (예: 2,500만÷5=500만)
   return { seed, riskPct, stopPct, unitCnt, maxLoss, totalAmt, unitAmt };
 }
 
@@ -2153,8 +2145,8 @@ function ktUpdateUnitSummary() {
   tableEl.innerHTML = `
     <div style="padding:4px 2px 6px;font-size:11px;color:var(--fg3);">
       매매당 최대손실 <b style="color:var(--fg2);">${fmtComma(Math.round(maxLoss))}원</b>
-      · 총 투자금 <b style="color:var(--fg2);">${fmtComma(Math.round(totalAmt))}원</b>
-      · ${unitCnt}분할 → <b style="color:var(--accent);">1유닛 = ${fmtComma(Math.round(unitAmt))}원</b>
+      · 종목당 최대(시드×25%) <b style="color:var(--fg2);">${fmtComma(Math.round(totalAmt))}원</b>
+      · 5분할 고정 → <b style="color:var(--accent);">1유닛 = ${fmtComma(Math.round(unitAmt))}원</b>
     </div>
     ${rows.join('')}`;
 }
