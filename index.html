@@ -1519,7 +1519,7 @@ function signalScore(s) {
   const curr = Number(s.curr), high20 = Number(s.high20),
         vol = Number(s.vol), avgVol = Number(s.avgVol),
         high52 = Number(s.high52);
-  if (curr >= high20 && high20 > 0) score += 34;           // ① 20일 신고가 돌파
+  if (curr >= high20 * 0.98 && high20 > 0) score += 34;    // ① 20일 신고가 -2% 이내
   if (vol >= avgVol * 1.5 && avgVol > 0) score += 33;      // ② 거래량 1.5배 이상
   if (high52 > 0 && curr >= high52 * 0.9) score += 33;     // ③ 52주 신고가 대비 -10% 이내
   return score;
