@@ -3901,14 +3901,29 @@ async function loadFeedData(type) {
   }
 }
 
-// 리서치: 브라우저에서 corsproxy.io → 네이버 증권 직접 파싱
+// 리서치: 브라우저에서 CORS 프록시 → 네이버 증권 직접 파싱
 async function loadResearchDirect() {
   // brokerCode=15 → 한국투자증권
   const targetUrl = 'https://finance.naver.com/research/company_list.naver?brokerCode=15';
-  const proxyUrl  = 'https://corsproxy.io/?' + encodeURIComponent(targetUrl);
 
-  const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(12000) });
-  if (!res.ok) throw new Error('proxy ' + res.status);
+  // 여러 무료 CORS 프록시를 순서대로 시도
+  const proxies = [
+    'https://api.allorigins.win/raw?url=' + encodeURIComponent(targetUrl),
+    'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(targetUrl),
+    'https://corsproxy.io/?' + encodeURIComponent(targetUrl),
+    'https://thingproxy.freeboard.io/fetch/' + targetUrl,
+  ];
+
+  let res = null;
+  let lastErr = '';
+  for (const proxyUrl of proxies) {
+    try {
+      const r = await fetch(proxyUrl, { signal: AbortSignal.timeout(8000) });
+      if (r.ok) { res = r; break; }
+      lastErr = 'proxy ' + r.status;
+    } catch (e) { lastErr = e.message; }
+  }
+  if (!res) throw new Error(lastErr || 'all proxies failed');
 
   // 네이버 증권은 EUC-KR 인코딩
   const buf  = await res.arrayBuffer();
