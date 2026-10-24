@@ -841,7 +841,7 @@
           <!-- 탭 헤더 -->
           <div style="display:flex;border-bottom:1px solid var(--border);">
             <button id="feed-tab-blog" onclick="switchFeedTab('blog')" style="flex:1;padding:10px 0;background:none;border:none;font-size:12px;font-weight:700;color:var(--accent);border-bottom:2px solid var(--accent);cursor:pointer;letter-spacing:.03em;">📝 블로그</button>
-            <button id="feed-tab-research" onclick="switchFeedTab('research')" style="flex:1;padding:10px 0;background:none;border:none;font-size:12px;font-weight:700;color:var(--fg3);border-bottom:2px solid transparent;cursor:pointer;letter-spacing:.03em;">📊 리서치</button>
+            <button id="feed-tab-research" onclick="switchFeedTab('research')" style="flex:1;padding:10px 0;background:none;border:none;font-size:12px;font-weight:700;color:var(--fg3);border-bottom:2px solid transparent;cursor:pointer;letter-spacing:.03em;">📊 네이버 리서치</button>
           </div>
           <!-- 블로그 피드 -->
           <div id="feed-panel-blog" style="padding:4px 0;">
@@ -3984,8 +3984,10 @@ async function loadFeedData(type) {
 function renderFeedItem(item, type) {
   const dateStr = item.date ? `<span style="font-size:11px;color:var(--fg3);flex-shrink:0;">${item.date}</span>` : '';
   const badge = type === 'research'
-    ? `<span style="font-size:10px;background:var(--accent);color:#fff;border-radius:4px;padding:1px 5px;margin-right:6px;vertical-align:middle;">${item.company || '리서치'}</span>`
-    : '';
+    ? `<span style="font-size:10px;background:var(--accent);color:#fff;border-radius:4px;padding:1px 5px;margin-right:6px;vertical-align:middle;">${item.company || '네이버 리서치'}</span>`
+    : item.author
+      ? `<span style="font-size:10px;background:var(--surface2);color:var(--fg2);border-radius:4px;padding:1px 5px;margin-right:6px;vertical-align:middle;border:1px solid var(--border);">${item.author}</span>`
+      : '';
   return `<a href="${item.link || '#'}" target="_blank" rel="noopener" style="display:block;text-decoration:none;padding:11px 14px;border-bottom:1px solid var(--border);">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
       <div style="min-width:0;flex:1;">
