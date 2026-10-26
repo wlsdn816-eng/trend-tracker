@@ -2426,7 +2426,7 @@ function ktSavePosition() {
       name: label,
       qty,
       avgPrice: entry,
-      curPrice: entry,
+      curPrice: entry,  // 초기값; 아래 loadHoldingPrices()로 즉시 업데이트
       dayChange: 0,
       buyDate: new Date().toLocaleDateString('ko-KR', { year:'numeric', month:'2-digit', day:'2-digit' }),
       note: '',
@@ -2437,6 +2437,8 @@ function ktSavePosition() {
     syncHoldingsToKV();
     renderHoldings();
     renderJournalList();
+    // 현재가 즉시 업데이트 (force=true로 TTL 무시)
+    loadHoldingPrices(true);
   }
 
   // 저장 피드백
