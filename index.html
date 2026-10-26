@@ -1164,6 +1164,8 @@
               <th style="padding:8px 6px;text-align:right;font-weight:600;white-space:nowrap;">평균단가</th>
               <th style="padding:8px 6px;text-align:right;font-weight:600;white-space:nowrap;">현재가</th>
               <th style="padding:8px 6px;text-align:right;font-weight:600;white-space:nowrap;">당일±</th>
+              <th style="padding:8px 6px;text-align:right;font-weight:600;white-space:nowrap;">손절가</th>
+              <th style="padding:8px 6px;text-align:right;font-weight:600;white-space:nowrap;">목표가</th>
               <th style="padding:8px 6px;text-align:right;font-weight:600;white-space:nowrap;">평가금액</th>
               <th style="padding:8px 6px;text-align:right;font-weight:600;white-space:nowrap;">평가손익</th>
               <th style="padding:8px 6px;text-align:right;font-weight:600;white-space:nowrap;">수익률</th>
@@ -1173,13 +1175,14 @@
           </thead>
           <tbody id="holding-tbody">
             <tr id="holding-empty-row">
-              <td colspan="10" style="text-align:center;padding:24px;color:var(--fg-muted);font-size:13px;">보유중인 종목이 없습니다</td>
+              <td colspan="12" style="text-align:center;padding:24px;color:var(--fg-muted);font-size:13px;">보유중인 종목이 없습니다</td>
             </tr>
           </tbody>
           <tfoot id="holding-tfoot" style="display:none;">
             <tr style="background:var(--surface1);font-weight:700;font-size:12px;">
               <td colspan="4" style="padding:8px 6px;">합계</td>
               <td style="padding:8px 6px;text-align:right;" id="tf-day-change">—</td>
+              <td colspan="2" style="padding:8px 6px;"></td>
               <td style="padding:8px 6px;text-align:right;" id="tf-eval">—</td>
               <td style="padding:8px 6px;text-align:right;" id="tf-pnl">—</td>
               <td style="padding:8px 6px;text-align:right;" id="tf-ret">—</td>
@@ -1302,17 +1305,17 @@
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
       스크리너
     </button>
-    <button class="tab-btn" data-tab="mock">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-      모의투자
+    <button class="tab-btn" data-tab="position">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      관제탑
     </button>
     <button class="tab-btn" data-tab="journal">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
       매매일지
     </button>
-    <button class="tab-btn" data-tab="position">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-      포지션
+    <button class="tab-btn" data-tab="mock">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      모의투자
     </button>
   </nav>
 </div>
@@ -2412,6 +2415,30 @@ function ktSavePosition() {
   list.unshift(pos);
   localStorage.setItem(KT_POSITIONS_KEY, JSON.stringify(list));
   ktRenderSavedList();
+
+  // 매매일지 보유종목에 자동 추가 (중복 방지: 동일 code가 없을 때만)
+  const alreadyHeld = holdings.find(h => h.code === code);
+  if (!alreadyHeld && qty > 0) {
+    const uid = () => Math.random().toString(36).slice(2,9);
+    holdings.push({
+      id: uid(),
+      code,
+      name: label,
+      qty,
+      avgPrice: entry,
+      curPrice: entry,
+      dayChange: 0,
+      buyDate: new Date().toLocaleDateString('ko-KR', { year:'numeric', month:'2-digit', day:'2-digit' }),
+      note: '',
+      stopPrice,
+      t3,
+    });
+    save(KEYS_HOLDING, holdings);
+    syncHoldingsToKV();
+    renderHoldings();
+    renderJournalList();
+  }
+
   // 저장 피드백
   const btn = document.querySelector('button[onclick="ktSavePosition()"]');
   if (btn) { btn.textContent = '✅ 저장됨'; setTimeout(() => { btn.textContent = '💾 포지션 저장'; }, 1200); }
@@ -2663,7 +2690,7 @@ function renderHoldings() {
   const emptyRow = document.getElementById('holding-empty-row');
 
   if (!holdings.length) {
-    tbody.innerHTML = `<tr id="holding-empty-row"><td colspan="10" style="text-align:center;padding:24px;color:var(--fg-muted);font-size:13px;">보유중인 종목이 없습니다</td></tr>`;
+    tbody.innerHTML = `<tr id="holding-empty-row"><td colspan="12" style="text-align:center;padding:24px;color:var(--fg-muted);font-size:13px;">보유중인 종목이 없습니다</td></tr>`;
     tfoot.style.display = 'none';
     return;
   }
@@ -2684,6 +2711,24 @@ function renderHoldings() {
     const retSign = ret >= 0 ? '+' : '';
     const pnlSign = evalPnl >= 0 ? '+' : '';
 
+    // 손절가/목표가 표시 로직
+    const stopP = h.stopPrice || null;
+    const t3P   = h.t3 || null;
+    // 손절가: 현재가가 손절가 아래면 빨간 배지, 손절가 근처(5% 이내)면 주황
+    let stopCell = stopP ? fmtComma(stopP) : '—';
+    let stopStyle = 'color:var(--fg-muted);';
+    if (stopP && curP) {
+      if (curP <= stopP) stopStyle = 'color:#ef4444;font-weight:700;';
+      else if (curP <= stopP * 1.05) stopStyle = 'color:#f97316;font-weight:700;';
+    }
+    // 목표가: 현재가가 목표가 이상이면 초록 배지
+    let t3Cell = t3P ? fmtComma(t3P) : '—';
+    let t3Style = 'color:var(--fg-muted);';
+    if (t3P && curP) {
+      if (curP >= t3P) t3Style = 'color:#22c55e;font-weight:700;';
+      else if (curP >= t3P * 0.97) t3Style = 'color:#86efac;font-weight:700;';
+    }
+
     return `<tr style="border-bottom:1px solid var(--border);">
       <td style="padding:10px 6px;">
         <div style="font-weight:700;font-size:13px;">${h.name || h.code}</div>
@@ -2695,6 +2740,8 @@ function renderHoldings() {
         <span style="font-size:13px;">${fmtComma(curP)}</span>
       </td>
       <td style="padding:10px 6px;text-align:right;" class="${dayChg >= 0 ? 'green' : 'red'}">${dayChgSign}${dayChg.toFixed(2)}%</td>
+      <td style="padding:10px 6px;text-align:right;${stopStyle}">${stopCell}</td>
+      <td style="padding:10px 6px;text-align:right;${t3Style}">${t3Cell}</td>
       <td style="padding:10px 6px;text-align:right;">${fmtComma(Math.round(evalAmt))}</td>
       <td style="padding:10px 6px;text-align:right;" class="${evalPnl >= 0 ? 'green' : 'red'}">${pnlSign}${fmtComma(Math.round(evalPnl))}</td>
       <td style="padding:10px 6px;text-align:right;" class="${ret >= 0 ? 'green' : 'red'}">${retSign}${ret.toFixed(2)}%</td>
