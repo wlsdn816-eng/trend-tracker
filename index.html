@@ -904,6 +904,10 @@
               <input type="checkbox" id="cond-rs" onchange="applyScreenerFilter()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
               <span style="font-size:12px;font-weight:600;">💪 RS 강세 (코스피 초과)</span>
             </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;background:var(--surface);border-radius:8px;border:1.5px solid var(--border);grid-column:1/-1;" id="lbl-cond-ma10m">
+              <input type="checkbox" id="cond-ma10m" onchange="applyScreenerFilter()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
+              <span style="font-size:12px;font-weight:600;">📅 월봉 10선 위 (현재가 > 10개월 이동평균)</span>
+            </label>
           </div>
           <div style="font-size:11px;color:var(--fg3);margin-top:8px;" id="scan-filter-desc">체크된 조건을 모두 충족하는 종목만 표시</div>
         </div>
@@ -3200,7 +3204,8 @@ function applyScreenerFilter() {
   const useVol     = document.getElementById('cond-vol')?.checked     ?? false;
   const useNear52w = document.getElementById('cond-near52w')?.checked ?? false;
   const useRs      = document.getElementById('cond-rs')?.checked      ?? false;
-  const anyChecked = useHigh20 || useVol || useNear52w || useRs;
+  const useMa10m   = document.getElementById('cond-ma10m')?.checked   ?? false;
+  const anyChecked = useHigh20 || useVol || useNear52w || useRs || useMa10m;
 
   const filtered = _scanAllResults.filter(r => {
     if (!anyChecked) return true;
@@ -3209,6 +3214,7 @@ function applyScreenerFilter() {
     if (useVol     && !f.vol)     return false;
     if (useNear52w && !f.near52w) return false;
     if (useRs      && !f.rs)      return false;
+    if (useMa10m   && !f.ma10m)   return false;
     return true;
   });
 
@@ -3218,7 +3224,7 @@ function applyScreenerFilter() {
     : `전체 신호 종목 표시 · ${filtered.length}개`;
 
   // 체크박스 라벨 active 스타일
-  ['high20','vol','near52w','rs'].forEach(k => {
+  ['high20','vol','near52w','rs','ma10m'].forEach(k => {
     const lbl = document.getElementById(`lbl-cond-${k}`);
     const chk = document.getElementById(`cond-${k}`);
     if (lbl && chk) {
@@ -3237,6 +3243,7 @@ function applyScreenerFilter() {
     vol:     { label: '거래량 1.5배', color: '#3b82f6' },
     near52w: { label: '52주 고점권', color: '#f59e0b' },
     rs:      { label: 'RS 강세',     color: '#a855f7' },
+    ma10m:   { label: '월봉 10선',   color: '#06b6d4' },
   };
 
   list.innerHTML = filtered.map(r => {
@@ -3248,7 +3255,7 @@ function applyScreenerFilter() {
       .filter(([k]) => f[k])
       .map(([, b]) => `<span style="background:${b.color}22;color:${b.color};border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700;">${b.label}</span>`)
       .join('');
-    const scoreCount = [f.high20,f.vol,f.near52w,f.rs].filter(Boolean).length;
+    const scoreCount = [f.high20,f.vol,f.near52w,f.rs,f.ma10m].filter(Boolean).length;
     const barColor = scoreCount >= 3 ? 'var(--green)' : scoreCount === 2 ? '#f59e0b' : 'var(--fg3)';
 
     const isExpanded = _scanExpandedSet.has(r.code);
@@ -3273,6 +3280,10 @@ function applyScreenerFilter() {
         <div class="data-row">
           <span class="data-label">RS (3개월)</span>
           <span class="data-value" style="color:${(r.rs3m||0)>0?'var(--green)':'var(--red)'}">${r.rs3m != null ? (r.rs3m > 0 ? '+' : '')+r.rs3m+'%' : '—'}</span>
+        </div>
+        <div class="data-row">
+          <span class="data-label">월봉 10선 (MA10M)</span>
+          <span class="data-value">${r.ma10m ? r.ma10m.toLocaleString()+'원' : '—'} ${r.ma10m && r.curr ? `<span style="font-size:11px;color:${r.curr>r.ma10m?'var(--green)':'var(--red)'}">(${r.curr>r.ma10m?'위 ▲':'아래 ▼'})</span>` : ''}</span>
         </div>
         <div class="data-row">
           <span class="data-label">ATR (14일)</span>
@@ -3301,7 +3312,7 @@ function applyScreenerFilter() {
       </div>
       ${detailRows}
       <div class="signal-bar" style="margin-top:8px;">
-        <div class="signal-fill" style="width:${scoreCount*25}%;background:${barColor};"></div>
+        <div class="signal-fill" style="width:${scoreCount*20}%;background:${barColor};"></div>
       </div>
     </div>`;
   }).join('');
