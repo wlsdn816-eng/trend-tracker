@@ -2751,7 +2751,7 @@ window.deleteHolding = (i) => {
 let lastFetchedAt   = '';
 let lastFetchedTime = ''; // HH:MM (KST)
 let holdingPriceLoadedAt = 0;
-const HOLDING_PRICE_TTL = 5 * 60 * 1000; // 5분
+const HOLDING_PRICE_TTL = 30 * 60 * 1000; // 30분
 
 function isMarketOpen() {
   // KST 기준 평일 09:00~15:30 → 실시간 조회
@@ -3391,17 +3391,37 @@ async function saveKakaoToken() {
 }
 
 // 탭 클릭 시 추가 로드
+// 탭별 마지막 로드 시각 (30분 캐시)
+const TAB_TTL = 30 * 60 * 1000;
+let _mockLoadedAt = 0;
+let _screenerLoadedAt = 0;
+let _manualScreenerLoadedAt = 0;
+
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
+    const now = Date.now();
     if (btn.dataset.tab === 'screener') {
-      loadScanResult();
-      loadKakaoStatus();
+      // 자동 스크리너: 30분 캐시 (KV 읽기 — 토큰 소모 없으나 일관성 유지)
+      if (now - _screenerLoadedAt >= TAB_TTL) {
+        _screenerLoadedAt = now;
+        loadScanResult();
+        loadKakaoStatus();
+      }
+      // 수동 스크리너: 30분 캐시 자동 갱신
+      if (now - _manualScreenerLoadedAt >= TAB_TTL) {
+        _manualScreenerLoadedAt = now;
+        const btn2 = document.getElementById('btn-refresh-all');
+        if (btn2 && !btn2.disabled) btn2.click();
+      }
     }
     if (btn.dataset.tab === 'mock') {
-      loadMockBalance();
+      if (now - _mockLoadedAt >= TAB_TTL) {
+        _mockLoadedAt = now;
+        loadMockBalance();
+      }
     }
     if (btn.dataset.tab === 'journal') {
-      loadHoldingPrices();
+      loadHoldingPrices(); // 내부에 30분 TTL 적용됨
     }
   });
 });
