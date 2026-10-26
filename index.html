@@ -1759,7 +1759,7 @@ async function searchKisStocks(q) {
   if (!q || q.length < 1) return [];
   try {
     const res = await fetch(`${KIS_WORKER}/search?q=${encodeURIComponent(q)}`, {
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
@@ -2437,8 +2437,8 @@ function ktSavePosition() {
     syncHoldingsToKV();
     renderHoldings();
     renderJournalList();
-    // 현재가 즉시 업데이트 (force=true로 TTL 무시)
-    loadHoldingPrices(true);
+    // 현재가 업데이트 — 2초 지연 후 실행 (검색 요청과 동시 호출 시 타임아웃 방지)
+    setTimeout(() => loadHoldingPrices(true), 2000);
   }
 
   // 저장 피드백
