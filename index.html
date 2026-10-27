@@ -3484,7 +3484,11 @@ async function loadMockBalance() {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '잔고 조회 실패');
 
-    const deposit = parseInt(data.deposit || 0);
+    const stocks = data.stocks || [];
+    const rawDeposit = parseInt(data.deposit || 0);
+    // KIS D+2 결제: 예수금에서 보유 주식 매수금액 차감하여 실제 가용 예수금 계산
+    const heldCost = stocks.reduce((sum, s) => sum + (parseInt(s.avgPrice || 0) * parseInt(s.qty || 0)), 0);
+    const deposit = Math.max(0, rawDeposit - heldCost);
     const evalAmt = parseInt(data.evalAmt || 0);
     const pnl = parseInt(data.pnl || 0);
     document.getElementById('mock-deposit').textContent = deposit ? deposit.toLocaleString() + '원' : '—';
@@ -3493,7 +3497,6 @@ async function loadMockBalance() {
     pnlEl.textContent = pnl ? (pnl >= 0 ? '+' : '') + pnl.toLocaleString() + '원' : '—';
     pnlEl.className = 'summary-tile-val ' + (pnl >= 0 ? 'green' : 'red');
 
-    const stocks = data.stocks || [];
     if (!stocks.length) {
       el.innerHTML = '<div class="card" style="text-align:center;color:var(--fg3);padding:20px;font-size:13px;">보유 종목 없음</div>';
       return;
