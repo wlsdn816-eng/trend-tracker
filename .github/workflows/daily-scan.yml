@@ -17,64 +17,61 @@ jobs:
           OFFSET=0
           SCANNED_AT=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
           KOSPI_RS3M=0
-          TOTAL=9999
           MAX_CHUNKS=500
 
           echo "스캔 시작: $SCANNED_AT"
 
           for i in $(seq 1 $MAX_CHUNKS); do
-            if [ $OFFSET -ge $TOTAL ]; then
-              break
-            fi
 
-            # 마지막 청크 여부 판단 (다음 offset이 total 이상이면 카카오 알림 전송)
-            NEXT_OFFSET=$((OFFSET + CHUNK_SIZE))
-            if [ $NEXT_OFFSET -ge $TOTAL ]; then
-              SEND_KAKAO=true
-            else
-              SEND_KAKAO=false
-            fi
+            BODY="{\"offset\":${OFFSET},\"chunkSize\":${CHUNK_SIZE},\"scannedAt\":\"${SCANNED_AT}\",\"kospiRs3m\":${KOSPI_RS3M},\"sendKakao\":false}"
 
-            BODY=$(cat <<EOF
-          {"offset":$OFFSET,"chunkSize":$CHUNK_SIZE,"scannedAt":"$SCANNED_AT","kospiRs3m":$KOSPI_RS3M,"sendKakao":$SEND_KAKAO}
-          EOF
-          )
-
-            RESPONSE=$(curl -s -X POST "$WORKER/scan-chunk" \
+            RESPONSE=$(curl -sf -X POST "$WORKER/scan-chunk" \
               -H "Content-Type: application/json" \
               -d "$BODY" \
-              --max-time 30)
+              --max-time 30 2>&1)
 
-            # 응답에서 값 추출
-            DONE=$(echo "$RESPONSE" | grep -o '"done":true' | head -1)
-            NEW_TOTAL=$(echo "$RESPONSE" | grep -o '"total":[0-9]*' | head -1 | grep -o '[0-9]*')
-            NEW_KOSPI=$(echo "$RESPONSE" | grep -o '"kospiRs3m":[0-9.-]*' | head -1 | grep -o '[0-9.-]*')
-            ERROR=$(echo "$RESPONSE" | grep -o '"error":"[^"]*"' | head -1)
-
-            if [ -n "$ERROR" ]; then
-              echo "청크 $i (offset=$OFFSET) 오류: $ERROR"
-              echo "응답: $RESPONSE"
+            EXIT_CODE=$?
+            if [ $EXIT_CODE -ne 0 ]; then
+              echo "청크 $i curl 실패 (exit=$EXIT_CODE): $RESPONSE"
               exit 1
             fi
 
-            if [ -n "$NEW_TOTAL" ] && [ "$NEW_TOTAL" -gt 0 ]; then
-              TOTAL=$NEW_TOTAL
-            fi
-            if [ -n "$NEW_KOSPI" ]; then
+            echo "청크 $i (offset=$OFFSET): $RESPONSE"
+
+            # done 여부 확인
+            DONE=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if d.get('done') else 'false')" 2>/dev/null)
+            NEXT_OFFSET=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('nextOffset', 0))" 2>/dev/null)
+            NEW_KOSPI=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('kospiRs3m', 0))" 2>/dev/null)
+            TOTAL=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('total', 0))" 2>/dev/null)
+
+            if [ -n "$NEW_KOSPI" ] && [ "$NEW_KOSPI" != "0" ]; then
               KOSPI_RS3M=$NEW_KOSPI
             fi
 
-            echo "청크 $i: offset=$OFFSET, total=$TOTAL, done=${DONE:-false}"
+            if [ "$DONE" = "true" ]; then
+              echo "스캔 완료! total=$TOTAL"
+              break
+            fi
 
-            if [ -n "$DONE" ]; then
-              echo "스캔 완료! 카카오톡 알림 전송됨"
-              echo "최종 응답: $RESPONSE"
+            if [ -z "$NEXT_OFFSET" ] || [ "$NEXT_OFFSET" = "0" ]; then
+              echo "nextOffset이 없음, 종료"
               break
             fi
 
             OFFSET=$NEXT_OFFSET
 
-            # API 레이트 리밋 방지 (300ms 대기)
+            # 마지막 청크 감지: 다음 offset이 total 이상이면 sendKakao=true
+            if [ "$OFFSET" -ge "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
+              echo "마지막 청크 도달, 카카오 알림 전송 중..."
+              FINAL_BODY="{\"offset\":${OFFSET},\"chunkSize\":${CHUNK_SIZE},\"scannedAt\":\"${SCANNED_AT}\",\"kospiRs3m\":${KOSPI_RS3M},\"sendKakao\":true}"
+              FINAL_RESP=$(curl -sf -X POST "$WORKER/scan-chunk" \
+                -H "Content-Type: application/json" \
+                -d "$FINAL_BODY" \
+                --max-time 30)
+              echo "최종: $FINAL_RESP"
+              break
+            fi
+
             sleep 0.3
           done
 
