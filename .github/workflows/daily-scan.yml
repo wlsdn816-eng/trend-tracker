@@ -15,5 +15,5 @@ jobs:
           curl -s -X POST https://kis-proxy.wlsdn816.workers.dev/scan-kakao \
             -H "Content-Type: application/json" \
             -d '{}' \
-            --max-time 120 \
+            --max-time 300 \
             -w "\nHTTP Status: %{http_code}\n"
