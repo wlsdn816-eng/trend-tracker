@@ -10,10 +10,72 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - name: 스크리너 실행 및 카카오톡 알림
+      - name: 스크리너 청크 분할 실행 및 카카오톡 알림
         run: |
-          curl -s -X POST https://kis-proxy.wlsdn816.workers.dev/scan-kakao \
-            -H "Content-Type: application/json" \
-            -d '{}' \
-            --max-time 300 \
-            -w "\nHTTP Status: %{http_code}\n"
+          WORKER="https://kis-proxy.wlsdn816.workers.dev"
+          CHUNK_SIZE=10
+          OFFSET=0
+          SCANNED_AT=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+          KOSPI_RS3M=0
+          TOTAL=9999
+          MAX_CHUNKS=500
+
+          echo "스캔 시작: $SCANNED_AT"
+
+          for i in $(seq 1 $MAX_CHUNKS); do
+            if [ $OFFSET -ge $TOTAL ]; then
+              break
+            fi
+
+            # 마지막 청크 여부 판단 (다음 offset이 total 이상이면 카카오 알림 전송)
+            NEXT_OFFSET=$((OFFSET + CHUNK_SIZE))
+            if [ $NEXT_OFFSET -ge $TOTAL ]; then
+              SEND_KAKAO=true
+            else
+              SEND_KAKAO=false
+            fi
+
+            BODY=$(cat <<EOF
+          {"offset":$OFFSET,"chunkSize":$CHUNK_SIZE,"scannedAt":"$SCANNED_AT","kospiRs3m":$KOSPI_RS3M,"sendKakao":$SEND_KAKAO}
+          EOF
+          )
+
+            RESPONSE=$(curl -s -X POST "$WORKER/scan-chunk" \
+              -H "Content-Type: application/json" \
+              -d "$BODY" \
+              --max-time 30)
+
+            # 응답에서 값 추출
+            DONE=$(echo "$RESPONSE" | grep -o '"done":true' | head -1)
+            NEW_TOTAL=$(echo "$RESPONSE" | grep -o '"total":[0-9]*' | head -1 | grep -o '[0-9]*')
+            NEW_KOSPI=$(echo "$RESPONSE" | grep -o '"kospiRs3m":[0-9.-]*' | head -1 | grep -o '[0-9.-]*')
+            ERROR=$(echo "$RESPONSE" | grep -o '"error":"[^"]*"' | head -1)
+
+            if [ -n "$ERROR" ]; then
+              echo "청크 $i (offset=$OFFSET) 오류: $ERROR"
+              echo "응답: $RESPONSE"
+              exit 1
+            fi
+
+            if [ -n "$NEW_TOTAL" ] && [ "$NEW_TOTAL" -gt 0 ]; then
+              TOTAL=$NEW_TOTAL
+            fi
+            if [ -n "$NEW_KOSPI" ]; then
+              KOSPI_RS3M=$NEW_KOSPI
+            fi
+
+            echo "청크 $i: offset=$OFFSET, total=$TOTAL, done=${DONE:-false}"
+
+            if [ -n "$DONE" ]; then
+              echo "스캔 완료! 카카오톡 알림 전송됨"
+              echo "최종 응답: $RESPONSE"
+              break
+            fi
+
+            OFFSET=$NEXT_OFFSET
+
+            # API 레이트 리밋 방지 (300ms 대기)
+            sleep 0.3
+          done
+
+          echo "전체 완료"
