@@ -59,7 +59,13 @@ jobs:
             fi
 
             if [ "$DONE" = "true" ]; then
-              echo "스캔 완료! total=$TOTAL"
+              echo "스캔 완료! total=$TOTAL, 카카오 알림 전송..."
+              KAKAO_BODY="{\"offset\":${OFFSET},\"chunkSize\":${CHUNK_SIZE},\"scannedAt\":\"${SCANNED_AT}\",\"kospiRs3m\":${KOSPI_RS3M},\"sendKakao\":true}"
+              KAKAO_RESP=$(curl -s -X POST "$WORKER/scan-chunk" \
+                -H "Content-Type: application/json" \
+                -d "$KAKAO_BODY" \
+                --max-time 60)
+              echo "카카오 전송 결과: $KAKAO_RESP"
               break
             fi
 
@@ -69,18 +75,6 @@ jobs:
             fi
 
             OFFSET=$NEXT_OFFSET
-
-            # 마지막 청크 감지
-            if [ "$TOTAL" -gt 0 ] && [ "$OFFSET" -ge "$TOTAL" ]; then
-              echo "마지막 청크, 카카오 알림 전송..."
-              FINAL_BODY="{\"offset\":${OFFSET},\"chunkSize\":${CHUNK_SIZE},\"scannedAt\":\"${SCANNED_AT}\",\"kospiRs3m\":${KOSPI_RS3M},\"sendKakao\":true}"
-              FINAL_RESP=$(curl -s -X POST "$WORKER/scan-chunk" \
-                -H "Content-Type: application/json" \
-                -d "$FINAL_BODY" \
-                --max-time 30)
-              echo "최종: $FINAL_RESP"
-              break
-            fi
 
             sleep 0.3
           done
