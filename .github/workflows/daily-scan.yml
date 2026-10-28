@@ -13,7 +13,7 @@ jobs:
       - name: 스크리너 청크 분할 실행 및 카카오톡 알림
         run: |
           WORKER="https://kis-proxy.wlsdn816.workers.dev"
-          CHUNK_SIZE=50
+          CHUNK_SIZE=30
           OFFSET=0
           SCANNED_AT=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
           KOSPI_RS3M=0
