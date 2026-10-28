@@ -10,72 +10,87 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - name: 첫 청크 테스트 (디버깅용)
-        run: |
-          WORKER="https://kis-proxy.wlsdn816.workers.dev"
-          echo "=== 첫 번째 청크 호출 ==="
-          RESPONSE=$(curl -s -X POST "$WORKER/scan-chunk" \
-            -H "Content-Type: application/json" \
-            -d '{"offset":0,"chunkSize":10,"scannedAt":"2026-10-28T00:00:00.000Z","kospiRs3m":0,"sendKakao":false}' \
-            --max-time 60 \
-            -w "\n--- HTTP Status: %{http_code} ---")
-          echo "$RESPONSE"
-
       - name: 스크리너 청크 분할 실행 및 카카오톡 알림
         run: |
           WORKER="https://kis-proxy.wlsdn816.workers.dev"
-          CHUNK_SIZE=10
+          CHUNK_SIZE=50
           OFFSET=0
           SCANNED_AT=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
           KOSPI_RS3M=0
-          MAX_CHUNKS=500
+          MAX_CHUNKS=200
+          TOTAL=0
+          ALL_RESULTS="[]"
 
-          echo "스캔 시작: $SCANNED_AT"
+          echo "스캔 시작: $SCANNED_AT (chunkSize=$CHUNK_SIZE)"
 
           for i in $(seq 1 $MAX_CHUNKS); do
 
-            BODY="{\"offset\":${OFFSET},\"chunkSize\":${CHUNK_SIZE},\"scannedAt\":\"${SCANNED_AT}\",\"kospiRs3m\":${KOSPI_RS3M},\"sendKakao\":false}"
+            BODY="{\"offset\":${OFFSET},\"chunkSize\":${CHUNK_SIZE},\"scannedAt\":\"${SCANNED_AT}\",\"kospiRs3m\":${KOSPI_RS3M}}"
 
             RESPONSE=$(curl -s -X POST "$WORKER/scan-chunk" \
               -H "Content-Type: application/json" \
               -d "$BODY" \
-              --max-time 30)
+              --max-time 55)
 
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$WORKER/scan-chunk" \
-              -H "Content-Type: application/json" \
-              -d "$BODY" \
-              --max-time 5 2>/dev/null || echo "000")
+            STATUS=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print('ok' if d.get('ok') else 'err')" 2>/dev/null || echo "err")
 
-            echo "청크 $i (offset=$OFFSET, status=$HTTP_STATUS): $RESPONSE"
+            if [ "$STATUS" = "err" ]; then
+              echo "청크 $i (offset=$OFFSET) 오류: $RESPONSE"
+              exit 1
+            fi
 
-            # done 여부 확인
-            DONE=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if d.get('done') else 'false')" 2>/dev/null || echo "false")
-            NEXT_OFFSET=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('nextOffset', 0))" 2>/dev/null || echo "0")
-            NEW_KOSPI=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('kospiRs3m', 0))" 2>/dev/null || echo "0")
-            TOTAL=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('total', 0))" 2>/dev/null || echo "0")
+            DONE=$(echo "$RESPONSE"       | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if d.get('done') else 'false')" 2>/dev/null || echo "false")
+            NEXT_OFFSET=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('nextOffset') or 0)" 2>/dev/null || echo "0")
+            NEW_KOSPI=$(echo "$RESPONSE"   | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('kospiRs3m', 0))" 2>/dev/null || echo "0")
+            NEW_TOTAL=$(echo "$RESPONSE"   | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('total', 0))" 2>/dev/null || echo "0")
+            CHUNK_RESULTS=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d.get('chunkResults', [])))" 2>/dev/null || echo "[]")
 
             if [ -n "$NEW_KOSPI" ] && [ "$NEW_KOSPI" != "0" ]; then
               KOSPI_RS3M=$NEW_KOSPI
             fi
+            if [ "$NEW_TOTAL" != "0" ]; then
+              TOTAL=$NEW_TOTAL
+            fi
+
+            # 청크 결과 누적 (Python으로 JSON 배열 병합)
+            ALL_RESULTS=$(python3 -c "
+import sys, json
+a = json.loads('''$ALL_RESULTS''')
+b = json.loads(sys.stdin.read())
+print(json.dumps(a + b))
+" <<< "$CHUNK_RESULTS")
+
+            echo "청크 $i (offset=$OFFSET, done=$DONE, 이번청크=$(echo $CHUNK_RESULTS | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))' 2>/dev/null || echo '?')개 히트)"
 
             if [ "$DONE" = "true" ]; then
-              echo "스캔 완료! total=$TOTAL, 카카오 알림 전송..."
-              KAKAO_BODY="{\"offset\":${OFFSET},\"chunkSize\":${CHUNK_SIZE},\"scannedAt\":\"${SCANNED_AT}\",\"kospiRs3m\":${KOSPI_RS3M},\"sendKakao\":true}"
-              KAKAO_RESP=$(curl -s -X POST "$WORKER/scan-chunk" \
+              echo "스캔 완료! total=$TOTAL, 전체 히트=$(echo $ALL_RESULTS | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))' 2>/dev/null || echo '?')개"
+              echo "카카오 알림 전송 및 KV 저장 중..."
+
+              # sendFinal로 전체 결과 전송 (KV 2회만 사용)
+              FINAL_BODY=$(python3 -c "
+import json, sys
+all_results = json.loads(sys.stdin.read())
+payload = {
+  'sendFinal': True,
+  'sendKakao': True,
+  'scannedAt': '$SCANNED_AT',
+  'total': $TOTAL,
+  'kospiRs3m': $KOSPI_RS3M,
+  'allResults': all_results
+}
+print(json.dumps(payload))
+" <<< "$ALL_RESULTS")
+
+              FINAL_RESP=$(curl -s -X POST "$WORKER/scan-chunk" \
                 -H "Content-Type: application/json" \
-                -d "$KAKAO_BODY" \
+                -d "$FINAL_BODY" \
                 --max-time 60)
-              echo "카카오 전송 결과: $KAKAO_RESP"
+
+              echo "최종 저장 및 카카오 전송 결과: $FINAL_RESP"
               break
             fi
 
-            if [ -z "$NEXT_OFFSET" ] || [ "$NEXT_OFFSET" = "0" ]; then
-              echo "nextOffset이 없음, 오류 발생"
-              exit 1
-            fi
-
             OFFSET=$NEXT_OFFSET
-
             sleep 0.3
           done
 
