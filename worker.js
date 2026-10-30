@@ -353,21 +353,32 @@ async function getPrice(code, env) {
 async function getOHLCV(code, env) {
   const token = await getToken(env);
   const today = new Date().toISOString().slice(0,10).replace(/-/g,'');
-  const url = `${KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-daily-price`
-    + `?FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD=${code}`
-    + `&FID_PERIOD_DIV_CODE=D&FID_ORG_ADJ_PRC=0`
-    + `&FID_INPUT_DATE_1=20240101&FID_INPUT_DATE_2=${today}`;
 
-  const res = await fetch(url, {
-    headers: kisHeaders(token, 'FHKST03010100', env),
-  });
-  if (!res.ok) throw new Error(`KIS OHLCV 실패: HTTP ${res.status}`);
-  const data = await res.json();
-  if (data.rt_cd !== '0') throw new Error(data.msg1 || 'OHLCV 조회 실패');
+  // 일봉 + 월봉을 병렬로 조회
+  const [dailyRes, monthlyRes] = await Promise.all([
+    fetch(
+      `${KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-daily-price`
+      + `?FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD=${code}`
+      + `&FID_PERIOD_DIV_CODE=D&FID_ORG_ADJ_PRC=0`
+      + `&FID_INPUT_DATE_1=20240101&FID_INPUT_DATE_2=${today}`,
+      { headers: kisHeaders(token, 'FHKST03010100', env) }
+    ),
+    fetch(
+      `${KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-daily-price`
+      + `?FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD=${code}`
+      + `&FID_PERIOD_DIV_CODE=M&FID_ORG_ADJ_PRC=0`
+      + `&FID_INPUT_DATE_1=20240101&FID_INPUT_DATE_2=${today}`,
+      { headers: kisHeaders(token, 'FHKST03010100', env) }
+    ),
+  ]);
+
+  if (!dailyRes.ok) throw new Error(`KIS OHLCV 실패: HTTP ${dailyRes.status}`);
+  const dailyData = await dailyRes.json();
+  if (dailyData.rt_cd !== '0') throw new Error(dailyData.msg1 || 'OHLCV 조회 실패');
 
   // output2가 일봉 배열 (최신순)
-  const rows = (data.output2 || []).map(r => ({
-    date:   r.stck_bsop_date,           // YYYYMMDD
+  const rows = (dailyData.output2 || []).map(r => ({
+    date:   r.stck_bsop_date,
     open:   parseInt(r.stck_oprc) || 0,
     high:   parseInt(r.stck_hgpr) || 0,
     low:    parseInt(r.stck_lwpr) || 0,
@@ -382,6 +393,7 @@ async function getOHLCV(code, env) {
   const vols   = rows.map(r => r.vol);
 
   const curr   = closes[0] || 0;
+  const prevClose = closes[1] || 0; // 전일 종가 (돌파 판정용)
 
   // 최근 20일 고가 (오늘 포함) — 장 마감 후 스캔이므로 오늘 종가 기준 정상
   const high20 = highs.length > 0 ? Math.max(...highs.slice(0, 20)) : 0;
@@ -405,38 +417,33 @@ async function getOHLCV(code, env) {
   const high52 = highs.length > 0 ? Math.max(...highs.slice(0, Math.min(250, highs.length))) : 0;
 
   // RS (상대강도): 최근 3개월(약 63거래일) 수익률
-  // 코스피 비교는 런타임에 calcSignalScore에서 처리
   const close63ago = closes[Math.min(62, closes.length - 1)] || curr;
   const rs3m = close63ago > 0 ? ((curr - close63ago) / close63ago) * 100 : 0;
 
-  // 월봉 10선 (MA10M): 일봉에서 월별 마지막 종가 추출 → 최근 10개월 평균
-  // rows는 최신순이므로 날짜 기준 월별 그룹핑
-  const monthlyCloses = (() => {
-    const seen = new Set();
-    const result = [];
-    for (const r of rows) {
-      if (!r.date || !r.close) continue;
-      const ym = r.date.slice(0, 6); // YYYYMM
-      if (!seen.has(ym)) {
-        seen.add(ym);
-        result.push(r.close); // 최신순이므로 월별 첫 번째 = 월말 종가
+  // 월봉 10선 (MA10M): 월봉 API로 정확하게 계산
+  // 월봉 output2도 최신순. index 0 = 이번 달(미완성), index 1~10 = 직전 10개 완성 월
+  let ma10m = 0;
+  try {
+    if (monthlyRes.ok) {
+      const monthlyData = await monthlyRes.json();
+      if (monthlyData.rt_cd === '0') {
+        const mRows = (monthlyData.output2 || []).map(r => parseInt(r.stck_clpr) || 0).filter(v => v > 0);
+        // index 0 = 이번 달(진행 중이므로 제외), index 1~10 = 직전 10개 완성 월
+        const ma10mSlice = mRows.slice(1, 11);
+        if (ma10mSlice.length >= 5) {
+          ma10m = Math.round(ma10mSlice.reduce((a, b) => a + b, 0) / ma10mSlice.length);
+        }
       }
     }
-    return result; // 최신 월부터 과거 순
-  })();
-  // 현재 월은 아직 마감되지 않았을 수 있으므로 MA10 계산 시 현재월 제외 (index 1부터 10개)
-  const ma10mSlice = monthlyCloses.slice(1, 11); // 직전 10개 완성 월
-  const ma10m = ma10mSlice.length >= 5
-    ? Math.round(ma10mSlice.reduce((a, b) => a + b, 0) / ma10mSlice.length)
-    : 0;
+  } catch(e) {
+    console.warn(`[월봉MA] ${code} 계산 실패:`, e.message);
+  }
 
-  const latestDate = rows[0]?.date || ''; // 가장 최근 거래일 YYYYMMDD
-  // 거래정지 판별: 최근 3거래일 모두 거래량 0이면 정지 종목으로 간주
+  const latestDate = rows[0]?.date || '';
   const haltedVol = vols.slice(0, 3).every(v => v === 0);
-  // 거래정지 판별: 최근 3거래일 고가=저가=종가 (가격 변동 없음)
   const haltedPrice = rows.slice(0, 3).every(r => r.high === r.low && r.high === r.close && r.close > 0);
   const isHalted = haltedVol || haltedPrice;
-  return { code, curr, high20, low10, avgVol, todayVol, atr, high52, rs3m, ma10m, rows, latestDate, isHalted };
+  return { code, curr, prevClose, high20, low10, avgVol, todayVol, atr, high52, rs3m, ma10m, rows, latestDate, isHalted };
 }
 
 // ────────────────────────────────────────────────────────────
@@ -918,8 +925,9 @@ function calcSignalFlags(data, kospiRs3m = 0) {
   const flag_near52w = data.high52 > 0 && data.curr >= data.high52 * 0.90; // -10% 이내
   // RS: 청크 스캔 시 임시로 코스피 초과 조건 사용 (sendFinal에서 IBD RS 레이팅으로 재계산)
   const flag_rs      = data.rs3m > 0 && data.rs3m > kospiRs3m;
-  // 월봉 10선 위: 현재가 > 최근 10개월 이동평균
-  const flag_ma10m   = data.ma10m > 0 && data.curr > data.ma10m;
+  // 월봉 10선 돌파: 오늘 처음 10개월 이동평균 위로 올라온 경우만
+  // (전일 종가 ≤ MA10M < 오늘 종가)
+  const flag_ma10m   = data.ma10m > 0 && data.curr > data.ma10m && data.prevClose <= data.ma10m;
 
   const reasons = [];
   if (flag_high20)  reasons.push('20일 신고가 돌파');
