@@ -894,7 +894,7 @@
             </label>
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;background:var(--surface);border-radius:8px;border:1.5px solid var(--border);" id="lbl-cond-vol">
               <input type="checkbox" id="cond-vol" onchange="applyScreenerFilter()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
-              <span style="font-size:12px;font-weight:600;">📊 거래량 1.5배 이상</span>
+              <span style="font-size:12px;font-weight:600;">📊 거래량 2배 이상</span>
             </label>
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;background:var(--surface);border-radius:8px;border:1.5px solid var(--border);" id="lbl-cond-near52w">
               <input type="checkbox" id="cond-near52w" onchange="applyScreenerFilter()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
@@ -1527,7 +1527,7 @@ function signalScore(s) {
         vol = Number(s.vol), avgVol = Number(s.avgVol),
         high52 = Number(s.high52);
   if (curr >= high20 * 0.98 && high20 > 0) score += 34;    // ① 20일 신고가 -2% 이내
-  if (vol >= avgVol * 1.5 && avgVol > 0) score += 33;      // ② 거래량 1.5배 이상
+  if (vol >= avgVol * 2.0 && avgVol > 0) score += 33;      // ② 거래량 2배 이상
   if (high52 > 0 && curr >= high52 * 0.9) score += 33;     // ③ 52주 신고가 대비 -10% 이내
   return score;
 }
@@ -3289,7 +3289,7 @@ function applyScreenerFilter() {
 
   const FLAG_BADGES = {
     high20:  { label: '20일 신고가', color: '#22c55e' },
-    vol:     { label: '거래량 1.5배', color: '#3b82f6' },
+    vol:     { label: '거래량 2배', color: '#3b82f6' },
     near52w: { label: '52주 고점권', color: '#f59e0b' },
     rs:      { label: 'RS 강세',     color: '#a855f7' },
     ma10m:   { label: '월봉 10선',   color: '#06b6d4' },
