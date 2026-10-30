@@ -1078,13 +1078,12 @@ async function refreshKakaoToken(env) {
     return null;
   }
 
-  const restApiKey = 'c52ddf70d09b1bb969c7fe77c91ad849';
   const params = new URLSearchParams({
     grant_type: 'refresh_token',
-    client_id: restApiKey,
+    client_id: 'c52ddf70d09b1bb969c7fe77c91ad849',
+    client_secret: '5mg0cMZz77qxpOsERhLSfaagrMofOXUm',
     refresh_token: refreshToken,
   });
-  params.append('client_secret', '5mg0cMZz77qxpOsERhLSfaagrMofOXUm');
 
   const res = await fetch('https://kauth.kakao.com/oauth/token', {
     method: 'POST',
@@ -1092,6 +1091,7 @@ async function refreshKakaoToken(env) {
     body: params.toString(),
   });
   const data = await res.json();
+  console.log('[카카오] refresh 응답:', JSON.stringify(data).slice(0, 200));
 
   if (data.access_token) {
     console.log('[카카오] refresh token으로 access token 갱신 성공');
