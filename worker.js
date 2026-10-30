@@ -914,7 +914,7 @@ function searchStocks(q) {
 // ────────────────────────────────────────────────────────────
 function calcSignalFlags(data, kospiRs3m = 0) {
   const flag_high20  = data.curr > 0 && data.high20 > 0 && data.curr >= data.high20 * 0.98; // 20일 신고가 2% 이내 근접 포함
-  const flag_vol     = data.todayVol > 0 && data.avgVol > 0 && data.todayVol >= data.avgVol * 1.5;
+  const flag_vol     = data.todayVol > 0 && data.avgVol > 0 && data.todayVol >= data.avgVol * 2.0;
   const flag_near52w = data.high52 > 0 && data.curr >= data.high52 * 0.90; // -10% 이내
   // RS: 청크 스캔 시 임시로 코스피 초과 조건 사용 (sendFinal에서 IBD RS 레이팅으로 재계산)
   const flag_rs      = data.rs3m > 0 && data.rs3m > kospiRs3m;
@@ -923,7 +923,7 @@ function calcSignalFlags(data, kospiRs3m = 0) {
 
   const reasons = [];
   if (flag_high20)  reasons.push('20일 신고가 돌파');
-  if (flag_vol)     reasons.push('거래량 1.5배');
+  if (flag_vol)     reasons.push('거래량 2배');
   if (flag_near52w) reasons.push('52주 고점 -10% 이내');
   if (flag_rs)      reasons.push(`RS 강세 (${data.rs3m.toFixed(1)}% vs 코스피 ${kospiRs3m.toFixed(1)}%)`);
   if (flag_ma10m)   reasons.push(`월봉 10선 위 (MA: ${data.ma10m.toLocaleString()})`);
@@ -978,94 +978,6 @@ function applyRsRatingCondition(allResults) {
   // score=0이 된 종목(다른 조건도 없는 경우)은 anySignal 없으므로 필터링
   return allResults.filter(r => r.score >= 1 ||
     r.flags?.high20 || r.flags?.vol || r.flags?.near52w || r.flags?.rs || r.flags?.ma10m);
-}
-
-// ────────────────────────────────────────────────────────────
-// 전종목 스캔
-// ────────────────────────────────────────────────────────────
-async function runFullScan(env) {
-  await loadMasterDB(env);
-  if (masterDB.length === 0) throw new Error('마스터DB 로드 실패');
-
-  // 코스피 3개월 수익률 미리 계산 (RS 비교 기준)
-  let kospiRs3m = 0;
-  try {
-    const kospiData = await getKospiMA(env); // curr 값 있음
-    // 코스피 63거래일 전 종가는 getKospiMA 내부 rows에서 취하기 어려우므로
-    // KospiMA 대신 별도 간이 fetch
-    const token = await getToken(env);
-    const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0,10).replace(/-/g,'');
-    const idxRes = await fetch(
-      `${KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-daily-indexchartprice`
-      + `?FID_COND_MRKT_DIV_CODE=U&FID_INPUT_ISCD=0001`
-      + `&FID_INPUT_DATE_1=20240101&FID_INPUT_DATE_2=${today}&FID_PERIOD_DIV_CODE=D`,
-      { headers: kisHeaders(token, 'FHKUP03500100', env) }
-    );
-    if (idxRes.ok) {
-      const idxData = await idxRes.json();
-      const rows = Array.isArray(idxData.output2) ? idxData.output2 : [];
-      const currIdx  = parseFloat(idxData.output1?.[0]?.bstp_nmix_prpr || idxData.output1?.bstp_nmix_prpr) || 0;
-      const prev63   = parseFloat(rows[62]?.bstp_nmix_clpr || rows[62]?.stck_clpr) || 0;
-      if (currIdx > 0 && prev63 > 0) kospiRs3m = ((currIdx - prev63) / prev63) * 100;
-    }
-  } catch(e) { console.error('코스피 RS 계산 실패:', e.message); }
-
-  const allResults = [];
-  const BATCH = 5;
-  const DELAY = 300;
-
-  for (let i = 0; i < masterDB.length; i += BATCH) {
-    const batch = masterDB.slice(i, i + BATCH);
-    const batchResults = await Promise.allSettled(
-      batch.map(async ({ code, name }) => {
-        try {
-          const data = await getOHLCV(code, env);
-          // 거래정지 종목 제외
-          if (!data.curr || data.isHalted) return null;
-          const { score, reasons, anySignal, flags } = calcSignalFlags(data, kospiRs3m);
-          if (!anySignal) return null;
-          return {
-            code, name, score, reasons, flags,
-            curr:     data.curr,
-            high20:   data.high20,
-            high52:   data.high52,
-            avgVol:   data.avgVol,
-            todayVol: data.todayVol,
-            atr:      data.atr,
-            low10:    data.low10,
-            rs3m:     Math.round(data.rs3m * 10) / 10,
-            ma10m:    data.ma10m,
-          };
-        } catch { return null; }
-      })
-    );
-    for (const r of batchResults) {
-      if (r.status === 'fulfilled' && r.value) allResults.push(r.value);
-    }
-    if (i + BATCH < masterDB.length) {
-      await new Promise(res => setTimeout(res, DELAY));
-    }
-  }
-
-  allResults.sort((a, b) => b.score - a.score);
-
-  const scannedAt = new Date().toISOString();
-  const total = masterDB.length;
-
-  // 기본: 20일신고가·거래량급증·RS강세·월봉10선 중 2개 이상 / 엄격: 핵심3개(신고가·거래량·RS) 동시 충족
-  const basicResults  = allResults.filter(r => {
-    const { high20, vol, rs, ma10m } = r.flags;
-    return [high20, vol, rs, ma10m].filter(Boolean).length >= 2;
-  });
-  const strictResults = allResults.filter(r => r.flags.high20 && r.flags.vol && r.flags.rs);
-
-  const basicData  = { scannedAt, total, kospiRs3m: Math.round(kospiRs3m * 10) / 10, hits: basicResults.length,  results: basicResults.slice(0, 200) };
-  const strictData = { scannedAt, total, kospiRs3m: Math.round(kospiRs3m * 10) / 10, hits: strictResults.length, results: strictResults.slice(0, 200) };
-
-  await env.KV.put('scan_result_basic',  JSON.stringify(basicData),  { expirationTtl: 86400 });
-  await env.KV.put('scan_result_strict', JSON.stringify(strictData), { expirationTtl: 86400 });
-
-  return { basic: basicData, strict: strictData };
 }
 
 // ────────────────────────────────────────────────────────────
@@ -1451,74 +1363,6 @@ export default {
         return corsResponse({ ok: true, total: masterDB.length });
       }
 
-      // GET /master-debug — grpCode 분포 확인용 (배포 후 삭제)
-      if (url.pathname === '/master-debug') {
-        const debugResult = [];
-        for (const { url: mUrl, tailLen } of MASTER_URLS) {
-          try {
-            const res = await fetch(mUrl);
-            if (!res.ok) { debugResult.push({ url: mUrl, error: `HTTP ${res.status}` }); continue; }
-            const blob = await res.arrayBuffer();
-            // ZIP 해제
-            const view = new DataView(blob);
-            let offset = 0;
-            let rawBuffer = null;
-            while (offset < blob.byteLength - 30) {
-              const sig = view.getUint32(offset, true);
-              if (sig !== 0x04034b50) break;
-              const compMethod = view.getUint16(offset + 8, true);
-              const compSize   = view.getUint32(offset + 18, true);
-              const nameLen    = view.getUint16(offset + 26, true);
-              const extraLen   = view.getUint16(offset + 28, true);
-              const dataOffset = offset + 30 + nameLen + extraLen;
-              const compData   = blob.slice(dataOffset, dataOffset + compSize);
-              if (compMethod === 0) {
-                rawBuffer = compData;
-              } else if (compMethod === 8) {
-                const ds = new DecompressionStream('deflate-raw');
-                const writer = ds.writable.getWriter();
-                const reader = ds.readable.getReader();
-                writer.write(new Uint8Array(compData));
-                writer.close();
-                const chunks = []; let totalLen = 0;
-                while (true) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); totalLen += value.length; }
-                const merged = new Uint8Array(totalLen); let pos = 0;
-                for (const c of chunks) { merged.set(c, pos); pos += c.length; }
-                rawBuffer = merged.buffer;
-              }
-              break;
-            }
-            if (!rawBuffer) { debugResult.push({ url: mUrl, error: 'ZIP 해제 실패' }); continue; }
-            // grpCode 분포 집계 (필터 없이)
-            const bytes = new Uint8Array(rawBuffer);
-            const asciiDec = new TextDecoder('ascii', { fatal: false });
-            const grpDist = {}; let count = 0, stCount = 0;
-            let lineStart = 0;
-            for (let i = 0; i <= bytes.length; i++) {
-              if (i === bytes.length || bytes[i] === 0x0A) {
-                let lineEnd = i;
-                if (lineEnd > lineStart && bytes[lineEnd - 1] === 0x0D) lineEnd--;
-                const lineLen = lineEnd - lineStart;
-                if (lineLen >= tailLen + 21) {
-                  const frontByteLen = lineLen - tailLen + 1;
-                  const code = asciiDec.decode(bytes.slice(lineStart, lineStart + 9)).trim();
-                  if (/^\d{6}$/.test(code)) {
-                    const grp = asciiDec.decode(bytes.slice(lineStart + frontByteLen, lineStart + frontByteLen + 2)).trim();
-                    grpDist[grp] = (grpDist[grp] || 0) + 1;
-                    count++; if (grp === 'ST') stCount++;
-                  }
-                }
-                lineStart = i + 1;
-              }
-            }
-            debugResult.push({ url: mUrl, total: count, stCount, grpDist });
-          } catch (e) {
-            debugResult.push({ url: mUrl, error: e.message });
-          }
-        }
-        return corsResponse({ debug: debugResult });
-      }
-
       // GET /price?code=005930
       if (url.pathname === '/price') {
         const code = url.searchParams.get('code') || '';
@@ -1540,23 +1384,8 @@ export default {
         const mode = url.searchParams.get('mode') || 'basic';
         const key = mode === 'strict' ? 'scan_result_strict' : 'scan_result_basic';
         const raw = await env.KV.get(key);
-        if (!raw) return corsResponse({ error: '스캔 결과 없음. /scan-now로 먼저 스캔하세요.' }, 404);
+        if (!raw) return corsResponse({ error: '스캔 결과 없음. GitHub Actions 스캔을 먼저 실행하세요.' }, 404);
         return corsResponse(JSON.parse(raw));
-      }
-
-      // POST /scan-now
-      if (url.pathname === '/scan-now') {
-        if (request.method !== 'POST') return corsResponse({ error: 'POST만 허용' }, 405);
-        const data = await runFullScan(env);
-        return corsResponse({ ok: true, basic: data.basic.hits, strict: data.strict.hits, total: data.basic.total, scannedAt: data.basic.scannedAt });
-      }
-
-      // POST /scan-kakao — GitHub Actions에서 호출: 스캔 + 카카오 알림
-      if (url.pathname === '/scan-kakao') {
-        if (request.method !== 'POST') return corsResponse({ error: 'POST만 허용' }, 405);
-        const data = await runFullScan(env);
-        await sendKakaoScanAlert(env, data.basic, data.strict);
-        return corsResponse({ ok: true, basicHits: data.basic.hits.length, strictHits: data.strict.hits.length, scannedAt: data.basic.scannedAt });
       }
 
       // POST /scan-chunk — GitHub Actions 청크 분할 스캔 (서브요청 50개 제한 우회)
@@ -1951,52 +1780,6 @@ export default {
         } catch(e) {
           return corsResponse({ items: [], error: e.message });
         }
-      }
-
-      // GET /debug-home
-      if (url.pathname === '/debug-home') {
-        const token = await getToken(env);
-
-        const safeJson = async (res, label) => {
-          const status = res.status;
-          const text = await res.text().catch(() => '(읽기 실패)');
-          let json = null;
-          try { json = JSON.parse(text); } catch(e) {}
-          const outputArr = json?.output || json?.output1 || json?.output2 || [];
-          const arr = Array.isArray(outputArr) ? outputArr : (outputArr ? [outputArr] : []);
-          return {
-            label, status,
-            rt_cd: json?.rt_cd,
-            msg1: json?.msg1,
-            outputKeys: json ? Object.keys(json) : null,
-            outputLength: arr.length,
-            firstRowKeys: arr[0] ? Object.keys(arr[0]) : null,
-            first3Rows: arr.slice(0, 3),
-          };
-        };
-
-        const [
-          invKospiRes, invKosdaqRes,
-          sec0005Res, sec0013Res, sec1005Res, sec1025Res,
-        ] = await Promise.all([
-          fetch(`${KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-index-category-price?FID_COND_MRKT_DIV_CODE=U&FID_INPUT_ISCD=0001`, { headers: kisHeaders(token, 'FHPUP02100000', env) }),
-          fetch(`${KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-index-category-price?FID_COND_MRKT_DIV_CODE=U&FID_INPUT_ISCD=1001`, { headers: kisHeaders(token, 'FHPUP02100000', env) }),
-          fetch(`${KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-index-category-price?FID_COND_MRKT_DIV_CODE=U&FID_INPUT_ISCD=0005`, { headers: kisHeaders(token, 'FHPUP02100000', env) }),
-          fetch(`${KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-index-category-price?FID_COND_MRKT_DIV_CODE=U&FID_INPUT_ISCD=0013`, { headers: kisHeaders(token, 'FHPUP02100000', env) }),
-          fetch(`${KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-index-category-price?FID_COND_MRKT_DIV_CODE=U&FID_INPUT_ISCD=1005`, { headers: kisHeaders(token, 'FHPUP02100000', env) }),
-          fetch(`${KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-index-category-price?FID_COND_MRKT_DIV_CODE=U&FID_INPUT_ISCD=1025`, { headers: kisHeaders(token, 'FHPUP02100000', env) }),
-        ]);
-
-        const results = await Promise.all([
-          safeJson(invKospiRes,  '수급/코스피  FHPUP02100000 U 0001'),
-          safeJson(invKosdaqRes, '수급/코스닥  FHPUP02100000 U 1001'),
-          safeJson(sec0005Res,   '업종/음식료품 FHPUP02100000 U 0005'),
-          safeJson(sec0013Res,   '업종/전기전자 FHPUP02100000 U 0013'),
-          safeJson(sec1005Res,   '업종/코스닥음식료 FHPUP02100000 U 1005'),
-          safeJson(sec1025Res,   '업종/소프트웨어 FHPUP02100000 U 1025'),
-        ]);
-
-        return corsResponse({ debug: results });
       }
 
       // GET /orders
