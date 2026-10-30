@@ -1096,9 +1096,13 @@ async function refreshKakaoToken(env) {
   if (data.access_token) {
     console.log('[카카오] refresh token으로 access token 갱신 성공');
     try {
+      // access token: 6시간 TTL로 KV 저장
       await env.KV.put('kakao_token_cache', data.access_token, { expirationTtl: 21600 });
+      await env.KV.put('kakao_token', data.access_token);
+      // refresh token이 새로 발급됐으면 갱신 (카카오는 만료 1개월 전부터 새 refresh token 발급)
       if (data.refresh_token) {
         await env.KV.put('kakao_refresh_token', data.refresh_token);
+        console.log('[카카오] refresh token도 갱신됨');
       }
     } catch(e) {
       console.error('카카오 토큰 KV 저장 실패 (무시):', e.message);
@@ -1106,6 +1110,11 @@ async function refreshKakaoToken(env) {
     return data.access_token;
   }
   console.error('[카카오] refresh token 갱신 실패:', JSON.stringify(data));
+  // refresh token 자체가 만료된 경우 KV에서 삭제 (재인증 유도)
+  if (data.error === 'invalid_grant') {
+    try { await env.KV.delete('kakao_refresh_token'); } catch(_) {}
+    console.error('[카카오] refresh token 만료됨 — /kakao-auth 재인증 필요');
+  }
   return null;
 }
 
@@ -1707,11 +1716,32 @@ export default {
         const kvCache = await env.KV.get('kakao_token_cache');
         const kvRefresh = await env.KV.get('kakao_refresh_token');
 
-        // refresh 시도
+        // refresh 시도 (실패 원인 상세 기록)
         let refreshedToken = null;
         let refreshError = null;
+        let refreshDetail = null;
         try {
-          refreshedToken = await refreshKakaoToken(env);
+          // refresh token으로 직접 시도해서 응답 확인
+          if (kvRefresh) {
+            const rParams = new URLSearchParams({
+              grant_type: 'refresh_token',
+              client_id: 'c52ddf70d09b1bb969c7fe77c91ad849',
+              refresh_token: kvRefresh,
+              client_secret: '5mg0cMZz77qxpOsERhLSfaagrMofOXUm',
+            });
+            const rRes = await fetch('https://kauth.kakao.com/oauth/token', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: rParams.toString(),
+            });
+            refreshDetail = await rRes.json();
+            if (refreshDetail.access_token) {
+              refreshedToken = refreshDetail.access_token;
+              await env.KV.put('kakao_token_cache', refreshedToken, { expirationTtl: 21600 });
+              await env.KV.put('kakao_token', refreshedToken);
+              if (refreshDetail.refresh_token) await env.KV.put('kakao_refresh_token', refreshDetail.refresh_token);
+            }
+          }
         } catch(e) {
           refreshError = e.message;
         }
@@ -1741,6 +1771,7 @@ export default {
           hasKvRefresh: !!kvRefresh,
           refreshed: !!refreshedToken,
           refreshError,
+          refreshDetail,  // refresh 실패 시 카카오 응답 상세
           kakaoResult,
           tokenUsed: tokenToUse ? tokenToUse.slice(0, 10) + '...' : null,
         });
