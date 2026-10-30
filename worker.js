@@ -819,7 +819,7 @@ async function parseMst(arrayBuffer, tailLen) {
   return result;
 }
 
-async function loadMasterDB() {
+async function loadMasterDB(env) {
   const now = Date.now();
   if (masterDB.length > 0 && now - masterLoadedAt < MASTER_TTL) return;
 
@@ -883,6 +883,16 @@ async function loadMasterDB() {
       !EXCLUDE_KEYWORDS.some(kw => name.includes(kw))
     );
     masterLoadedAt = now;
+
+    // KV에 masterDB 캐싱 (검색용 — TTL 25시간)
+    try {
+      if (env && env.KV) {
+        await env.KV.put('master_db_cache', JSON.stringify(masterDB), { expirationTtl: 25 * 60 * 60 });
+        console.log(`[마스터DB] KV 캐시 저장 완료: ${masterDB.length}개 종목`);
+      }
+    } catch (e) {
+      console.warn('[마스터DB] KV 캐시 저장 실패:', e.message);
+    }
   }
 }
 
@@ -974,7 +984,7 @@ function applyRsRatingCondition(allResults) {
 // 전종목 스캔
 // ────────────────────────────────────────────────────────────
 async function runFullScan(env) {
-  await loadMasterDB();
+  await loadMasterDB(env);
   if (masterDB.length === 0) throw new Error('마스터DB 로드 실패');
 
   // 코스피 3개월 수익률 미리 계산 (RS 비교 기준)
@@ -1376,12 +1386,23 @@ export default {
         const q = url.searchParams.get('q') || '';
         if (!q) return corsResponse({ results: [] });
 
-        // masterDB가 메모리에 있으면 즉시 검색 (빠름)
+        // 1순위: 메모리에 masterDB 있으면 즉시 검색
         if (masterDB.length > 0) {
           return corsResponse({ results: searchStocks(q), total: masterDB.length });
         }
 
-        // masterDB 없으면 KIS API로 검색 (타임아웃 방지)
+        // 2순위: KV 캐시에서 masterDB 복원 후 검색
+        try {
+          const cached = await env.KV.get('master_db_cache');
+          if (cached) {
+            masterDB = JSON.parse(cached);
+            masterLoadedAt = Date.now();
+            console.log(`[검색] KV 캐시에서 masterDB 복원: ${masterDB.length}개`);
+            return corsResponse({ results: searchStocks(q), total: masterDB.length });
+          }
+        } catch (_) {}
+
+        // 3순위: KV 캐시도 없으면 KIS API로 검색
         try {
           const token = await getToken(env);
           const kisRes = await fetch(
@@ -1404,18 +1425,20 @@ export default {
               .filter(it => it.pdno && it.prdt_abrv_name)
               .map(it => ({ code: it.pdno, name: it.prdt_abrv_name }))
               .slice(0, 20);
-            return corsResponse({ results });
+            if (results.length > 0) return corsResponse({ results });
           }
         } catch (_) {}
 
-        // 둘 다 실패 시 빈 결과 반환 (타임아웃 방지)
-        return corsResponse({ results: [], error: '검색 일시 불가' });
+        // 모두 실패 시: masterDB 백그라운드 로드 트리거 후 빈 결과 반환
+        // (다음 요청에서는 KV 캐시가 채워져 있을 것)
+        loadMasterDB(env).catch(() => {});
+        return corsResponse({ results: [], error: '종목 DB 준비 중 — 잠시 후 다시 검색해주세요' });
       }
 
       // GET /master-reload
       if (url.pathname === '/master-reload') {
         masterLoadedAt = 0;
-        await loadMasterDB();
+        await loadMasterDB(env);
         return corsResponse({ ok: true, total: masterDB.length });
       }
 
@@ -1575,7 +1598,7 @@ export default {
         const chunkSize = parseInt(body.chunkSize ?? 50);
         const isFirst   = offset === 0;
 
-        await loadMasterDB();
+        await loadMasterDB(env);
         if (masterDB.length === 0) throw new Error('마스터DB 로드 실패');
 
         // 첫 청크: 코스피 RS 계산
