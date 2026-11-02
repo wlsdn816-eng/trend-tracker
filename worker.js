@@ -1030,9 +1030,9 @@ async function refreshKakaoToken(env) {
     return data.access_token;
   }
   console.error('[카카오] refresh token 갱신 실패:', JSON.stringify(data));
-  // refresh token 자체가 만료된 경우 KV에서 삭제 (재인증 유도)
   if (data.error === 'invalid_grant') {
-    try { await env.KV.delete('kakao_refresh_token'); } catch(_) {}
+    // refresh token 만료 — KV에서 삭제하지 않음 (삭제하면 다음 요청도 복구 불가)
+    // 대신 에러 로그만 남기고 재인증은 사용자가 /kakao-auth로 수동 진행
     console.error('[카카오] refresh token 만료됨 — /kakao-auth 재인증 필요');
   }
   return null;
