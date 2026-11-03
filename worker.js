@@ -1331,37 +1331,21 @@ export default {
           }
         } catch (_) {}
 
-        // 3순위: KV 캐시도 없으면 KIS API로 검색
+        // 3순위: KV 캐시도 없으면 masterDB 직접 로드 (await — 이번 요청에서 바로 검색)
+        // KIS API fallback은 타임아웃이 잦아 제거함
         try {
-          const token = await getToken(env);
-          const kisRes = await fetch(
-            `${KIS_BASE}/uapi/domestic-stock/v1/quotations/search-stock-info?PRDT_TYPE_CD=300&PDNO=${encodeURIComponent(q)}&PRDT_ABRV_NAME=${encodeURIComponent(q)}`,
-            {
-              headers: {
-                'content-type': 'application/json',
-                'authorization': `Bearer ${token}`,
-                'appkey': env.KIS_APP_KEY,
-                'appsecret': env.KIS_APP_SECRET,
-                'tr_id': 'CTPF1604R',
-                'custtype': 'P',
-              },
-            }
-          );
-          if (kisRes.ok) {
-            const kisData = await kisRes.json();
-            const items = kisData.output || [];
-            const results = items
-              .filter(it => it.pdno && it.prdt_abrv_name)
-              .map(it => ({ code: it.pdno, name: it.prdt_abrv_name }))
-              .slice(0, 20);
-            if (results.length > 0) return corsResponse({ results });
+          console.log('[검색] KV 캐시 없음 — masterDB 직접 로드 시작');
+          await loadMasterDB(env);
+          if (masterDB.length > 0) {
+            console.log(`[검색] masterDB 로드 완료: ${masterDB.length}개`);
+            return corsResponse({ results: searchStocks(q), total: masterDB.length });
           }
-        } catch (_) {}
+        } catch (e) {
+          console.error('[검색] masterDB 로드 실패:', e.message);
+        }
 
-        // 모두 실패 시: masterDB 백그라운드 로드 트리거 후 빈 결과 반환
-        // (다음 요청에서는 KV 캐시가 채워져 있을 것)
-        loadMasterDB(env).catch(() => {});
-        return corsResponse({ results: [], error: '종목 DB 준비 중 — 잠시 후 다시 검색해주세요' });
+        // 모두 실패 시: 빈 결과 반환
+        return corsResponse({ results: [], error: '종목 DB 로드 실패 — 잠시 후 다시 검색해주세요' });
       }
 
       // GET /master-reload

@@ -1863,7 +1863,7 @@ function bindFetchBtn() {
         let results;
         try { results = await searchKisStocks(q); } catch(e) {
           searchResults.style.display = 'block';
-          searchResults.innerHTML = `<div style="padding:8px 12px;font-size:13px;color:var(--red);">❌ ${e.message}</div>`;
+          searchResults.innerHTML = `<div style="padding:8px 12px;font-size:13px;color:var(--red);">⚠️ 검색 실패 — 다시 입력해보세요<br><span style="font-size:11px;color:var(--fg3);">${e.message}</span></div>`;
           return;
         }
         if (!results.length) { searchResults.style.display = 'none'; return; }
