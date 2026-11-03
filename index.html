@@ -1596,8 +1596,8 @@ function renderScreener() {
     return `<div class="card" style="padding:10px 14px;">
       <div style="display:flex;align-items:center;justify-content:space-between;">
         <div style="flex:1;min-width:0;">
-          <span class="stock-link card-title" data-stock-code="${s.ticker}" data-stock-name="${s.name||s.ticker}" style="font-size:14px;">${s.ticker}</span>
-          <span class="stock-link" data-stock-code="${s.ticker}" data-stock-name="${s.name||s.ticker}" style="font-size:11px;color:var(--fg3);margin-left:6px;">${s.name || ''}</span>
+          <span class="stock-link card-title" data-stock-code="${s.ticker}" data-stock-name="${s.name||s.ticker}" style="font-size:15px;font-weight:700;">${s.name || s.ticker}</span>
+          <span class="stock-link" data-stock-code="${s.ticker}" data-stock-name="${s.name||s.ticker}" style="font-size:11px;color:var(--fg3);margin-left:6px;">${s.ticker}</span>
           <div style="margin-top:5px;"><span class="badge ${badgeClass}" style="font-size:10px;">${badgeText}</span></div>
         </div>
         <div style="text-align:right;flex-shrink:0;margin-left:10px;">

@@ -1255,13 +1255,10 @@ async function getResearchFeed(env) {
 // ────────────────────────────────────────────────────────────
 export default {
   // Cron Trigger — 매일 오후 4시 (KST = UTC 07:00)
+  // ※ 자동선별 스캔 + 카카오 알림은 GitHub Actions(/scan-chunk + sendFinal)에서 담당
   async scheduled(event, env, ctx) {
     ctx.waitUntil((async () => {
-      // 1) 자동선별 스캔 + 카카오 알림
-      const data = await runFullScan(env);
-      await sendKakaoScanAlert(env, data.basic, data.strict);
-
-      // 2) 보유 포지션 종가 스냅샷 KV에 저장
+      // 1) 보유 포지션 종가 스냅샷 KV에 저장
       try {
         const holdingsRaw = await env.TREND_TRACKER_KV.get('tf_holdings');
         if (holdingsRaw) {
