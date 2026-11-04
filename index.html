@@ -1845,8 +1845,32 @@ async function loadUserHoldings() {
     const res = await fetch(`${KIS_WORKER}/user-holdings?userId=${currentUser.userId}`);
     const data = await res.json();
     if (data.holdings && data.holdings.length > 0) {
+      // KV에 데이터 있음 → 그대로 사용
       holdings = data.holdings;
       renderHoldings();
+    } else {
+      // KV 비어있음 → 로컬스토리지 기존 데이터 마이그레이션
+      await migrateLocalStorageToKV();
+    }
+  } catch(_) {
+    // 네트워크 오류 시에도 로컬스토리지 복원
+    await migrateLocalStorageToKV();
+  }
+}
+
+async function migrateLocalStorageToKV() {
+  try {
+    // 기존 로컬스토리지에서 holdings 데이터 복원
+    const localHoldings = localStorage.getItem('tf_holdings');
+    if (localHoldings) {
+      const parsed = JSON.parse(localHoldings);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        holdings = parsed;
+        renderHoldings();
+        // KV에 저장 (마이그레이션)
+        await saveUserHoldings();
+        console.log(`✅ 기존 보유종목 ${parsed.length}개 마이그레이션 완료`);
+      }
     }
   } catch(_) {}
 }
