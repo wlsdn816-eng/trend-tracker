@@ -1750,8 +1750,17 @@ function showLoginScreen() {
   const ls = document.getElementById('login-screen');
   ls.style.display = 'flex';
 
-  // 구글 로그인 버튼 렌더링
-  if (GOOGLE_CLIENT_ID && window.google) {
+  // 구글 로그인 버튼 렌더링 (google 객체 준비될 때까지 대기)
+  if (GOOGLE_CLIENT_ID) {
+    renderGoogleButton();
+  } else {
+    document.getElementById('g_id_signin').innerHTML =
+      '<p style="font-size:13px;color:var(--fg3);">구글 클라이언트 ID 설정 필요</p>';
+  }
+}
+
+function renderGoogleButton() {
+  if (window.google && window.google.accounts) {
     google.accounts.id.initialize({
       client_id: GOOGLE_CLIENT_ID,
       callback: handleGoogleCredential,
@@ -1761,9 +1770,9 @@ function showLoginScreen() {
       document.getElementById('g_id_signin'),
       { theme: 'outline', size: 'large', text: 'signin_with', locale: 'ko' }
     );
-  } else if (!GOOGLE_CLIENT_ID) {
-    document.getElementById('g_id_signin').innerHTML =
-      '<p style="font-size:13px;color:var(--fg3);">구글 클라이언트 ID 설정 필요</p>';
+  } else {
+    // google 객체 아직 로드 중 — 100ms 후 재시도
+    setTimeout(renderGoogleButton, 100);
   }
 }
 
