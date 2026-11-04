@@ -1866,7 +1866,11 @@ function bindFetchBtn() {
           searchResults.innerHTML = `<div style="padding:8px 12px;font-size:13px;color:var(--red);">⚠️ 검색 실패 — 다시 입력해보세요<br><span style="font-size:11px;color:var(--fg3);">${e.message}</span></div>`;
           return;
         }
-        if (!results.length) { searchResults.style.display = 'none'; return; }
+        if (!results.length) {
+          searchResults.style.display = 'block';
+          searchResults.innerHTML = `<div style="padding:10px 12px;font-size:13px;color:var(--fg3);">검색 결과 없음 — 정확한 종목명으로 다시 검색해보세요</div>`;
+          return;
+        }
         searchResults.style.display = 'block';
         searchResults.innerHTML = results.map(r =>
           `<div class="search-result-item" data-code="${r.code}" data-name="${r.name}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px;">
