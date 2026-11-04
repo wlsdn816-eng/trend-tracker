@@ -1,0 +1,11 @@
+name = "kis-proxy"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "YOUR_KV_NAMESPACE_ID"
+
+[[kv_namespaces]]
+binding = "TREND_TRACKER_KV"
+id = "YOUR_TREND_TRACKER_KV_ID"
