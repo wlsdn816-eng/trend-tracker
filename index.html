@@ -768,12 +768,31 @@
   .stock-link:hover { color: var(--accent); border-bottom-color: var(--accent); }
 </style>
 
+<!-- 구글 로그인 화면 -->
+<div id="login-screen" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;">
+  <div style="text-align:center;">
+    <div style="font-size:36px;margin-bottom:8px;">📈</div>
+    <h1 style="font-size:22px;font-weight:700;color:var(--fg);margin:0;">추세추종 매매 트래커</h1>
+    <p style="font-size:14px;color:var(--fg3);margin:8px 0 0;">계속하려면 구글 계정으로 로그인하세요</p>
+  </div>
+  <div id="g_id_signin" style="cursor:pointer;"></div>
+  <p id="login-error" style="display:none;font-size:13px;color:var(--red);text-align:center;max-width:280px;"></p>
+</div>
+
 <div id="app">
   <!-- Header -->
   <header class="app-header">
     <div>
       <div class="header-sub">추세추종</div>
       <h1>매매 트래커</h1>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div id="header-user" style="display:none;align-items:center;gap:8px;">
+        <img id="header-avatar" src="" alt="" width="28" height="28" style="border-radius:50%;object-fit:cover;">
+        <span id="header-name" style="font-size:12px;color:var(--fg2);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+      </div>
+      <button id="push-toggle-btn" onclick="togglePushNotification()" style="display:none;background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:11px;color:var(--fg3);cursor:pointer;" title="알림 설정">🔔</button>
+      <button onclick="signOut()" id="signout-btn" style="display:none;background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:11px;color:var(--fg3);cursor:pointer;">로그아웃</button>
     </div>
   </header>
 
@@ -1705,6 +1724,201 @@ window.calcAtrInline = (i) => {
 // ─── KIS Worker API ────────────────────────────────────────
 // Cloudflare Workers 프록시를 통해 KIS Open API 호출
 const KIS_WORKER = 'https://kis-proxy.wlsdn816.workers.dev';
+
+// ─── 구글 로그인 + PWA 푸시 ────────────────────────────────
+const GOOGLE_CLIENT_ID = ''; // Google Cloud Console에서 발급받은 클라이언트 ID 입력
+
+let currentUser = null; // { email, userId, name, picture }
+
+function initAuth() {
+  // 로컬스토리지에 저장된 사용자 정보 복원
+  try {
+    const saved = localStorage.getItem('auth_user');
+    if (saved) {
+      currentUser = JSON.parse(saved);
+      onLoginSuccess(currentUser, false);
+      return;
+    }
+  } catch(_) {}
+
+  // 저장된 정보 없으면 로그인 화면 표시
+  showLoginScreen();
+}
+
+function showLoginScreen() {
+  document.getElementById('app').style.display = 'none';
+  const ls = document.getElementById('login-screen');
+  ls.style.display = 'flex';
+
+  // 구글 로그인 버튼 렌더링
+  if (GOOGLE_CLIENT_ID && window.google) {
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleGoogleCredential,
+      auto_select: false,
+    });
+    google.accounts.id.renderButton(
+      document.getElementById('g_id_signin'),
+      { theme: 'outline', size: 'large', text: 'signin_with', locale: 'ko' }
+    );
+  } else if (!GOOGLE_CLIENT_ID) {
+    document.getElementById('g_id_signin').innerHTML =
+      '<p style="font-size:13px;color:var(--fg3);">구글 클라이언트 ID 설정 필요</p>';
+  }
+}
+
+async function handleGoogleCredential(response) {
+  const idToken = response.credential;
+  try {
+    const res = await fetch(`${KIS_WORKER}/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showLoginError(data.error === '접근 권한 없음'
+        ? '이 계정은 접근 권한이 없습니다.'
+        : (data.error || '로그인 실패'));
+      return;
+    }
+    try { localStorage.setItem('auth_user', JSON.stringify(data)); } catch(_) {}
+    onLoginSuccess(data, true);
+  } catch(e) {
+    showLoginError('서버 연결 오류 — 잠시 후 다시 시도해주세요');
+  }
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('login-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function onLoginSuccess(user, isNewLogin) {
+  currentUser = user;
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = '';
+
+  // 헤더 사용자 표시
+  if (user.picture) {
+    document.getElementById('header-avatar').src = user.picture;
+  }
+  document.getElementById('header-name').textContent = user.name || user.email;
+  document.getElementById('header-user').style.display = 'flex';
+  document.getElementById('signout-btn').style.display = '';
+  document.getElementById('push-toggle-btn').style.display = '';
+
+  // 계정별 보유종목 로드
+  loadUserHoldings();
+
+  // PWA 푸시 초기화
+  initPushNotification();
+
+  // 앱 초기화 (기존 로직)
+  if (isNewLogin) {
+    initApp();
+  }
+}
+
+function signOut() {
+  if (!confirm('로그아웃 하시겠어요?')) return;
+  try { localStorage.removeItem('auth_user'); } catch(_) {}
+  currentUser = null;
+  if (window.google) google.accounts.id.disableAutoSelect();
+  location.reload();
+}
+
+// ─── 계정별 보유종목 ────────────────────────────────────────
+async function loadUserHoldings() {
+  if (!currentUser) return;
+  try {
+    const res = await fetch(`${KIS_WORKER}/user-holdings?userId=${currentUser.userId}`);
+    const data = await res.json();
+    if (data.holdings && data.holdings.length > 0) {
+      holdings = data.holdings;
+      renderHoldings();
+    }
+  } catch(_) {}
+}
+
+async function saveUserHoldings() {
+  if (!currentUser) return;
+  try {
+    await fetch(`${KIS_WORKER}/user-holdings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: currentUser.userId, holdings }),
+    });
+  } catch(_) {}
+}
+
+// ─── PWA 웹 푸시 ────────────────────────────────────────────
+// VAPID 공개키 (worker.js에서 생성한 키 쌍의 공개키)
+const VAPID_PUBLIC_KEY = ''; // 아래 안내에 따라 입력
+
+async function initPushNotification() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  try {
+    await navigator.serviceWorker.register('/sw.js');
+    updatePushButtonState();
+  } catch(_) {}
+}
+
+async function updatePushButtonState() {
+  const btn = document.getElementById('push-toggle-btn');
+  if (!btn) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    btn.textContent = sub ? '🔔 알림 ON' : '🔕 알림 OFF';
+    btn.style.color = sub ? 'var(--accent)' : 'var(--fg3)';
+  } catch(_) {}
+}
+
+async function togglePushNotification() {
+  if (!currentUser) return;
+  if (!VAPID_PUBLIC_KEY) {
+    alert('VAPID 키 설정이 필요합니다.\nindex.html의 VAPID_PUBLIC_KEY를 입력하세요.');
+    return;
+  }
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    if (existing) {
+      // 구독 해제
+      await existing.unsubscribe();
+      await fetch(`${KIS_WORKER}/push/unsubscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.userId }),
+      });
+      alert('푸시 알림이 해제되었습니다.');
+    } else {
+      // 구독 등록
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+      await fetch(`${KIS_WORKER}/push/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.userId, subscription: sub.toJSON() }),
+      });
+      alert('✅ 푸시 알림이 등록되었습니다!\n매일 오후 4시 스캔 완료 후 알림이 옵니다.');
+    }
+    updatePushButtonState();
+  } catch(e) {
+    alert('알림 설정 오류: ' + e.message);
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+}
 
 // 자주 쓰는 종목 프리셋
 const QUICK_STOCKS = [
@@ -2782,11 +2996,17 @@ function renderHoldings() {
 
 // KV 동기화 (fire-and-forget — 실패해도 로컬 저장은 유지)
 function syncHoldingsToKV() {
-  fetch(`${KIS_WORKER}/save-holdings`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ holdings }),
-  }).catch(e => console.warn('KV 동기화 실패 (로컬 저장은 유지됨):', e));
+  if (currentUser) {
+    // 구글 로그인 시 계정별 저장
+    saveUserHoldings();
+  } else {
+    // 미로그인 시 기존 방식
+    fetch(`${KIS_WORKER}/save-holdings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ holdings }),
+    }).catch(e => console.warn('KV 동기화 실패 (로컬 저장은 유지됨):', e));
+  }
 }
 
 window.deleteHolding = (i) => {
@@ -4377,14 +4597,28 @@ function buildCandleChart(bars) {
   return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block;max-width:100%;">${svgBody}</svg>`;
 }
 
-// ─── 앱 초기화: 토큰 1회 워밍업 후 홈 데이터 로드 ──────────
-// Worker KV에 토큰을 미리 캐싱해두면,
-// loadHomeData()의 4개 동시 요청이 KV 캐시를 재사용하여 추가 발급 없음
-(async () => {
+// ─── 앱 초기화 함수 ─────────────────────────────────────────
+async function initApp() {
   try {
     await fetch(`${KIS_WORKER}/token`); // 토큰 1회 발급 + KV 저장
-  } catch(_) { /* 워밍업 실패해도 loadHomeData는 진행 */ }
+  } catch(_) {}
   loadHomeData();
+}
+
+// ─── 시작: 로그인 체크 → 구글 SDK 로드 후 인증 초기화 ──────
+(function bootstrap() {
+  // 구글 로그인 SDK 동적 로드
+  if (GOOGLE_CLIENT_ID) {
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => initAuth();
+    document.head.appendChild(script);
+  } else {
+    // GOOGLE_CLIENT_ID 미설정 시 로그인 없이 바로 실행 (개발/테스트용)
+    initApp();
+  }
 })();
 
 // renderScreener, renderPositions 등의 종목 행에 onclick 추가를 위해

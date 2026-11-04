@@ -1855,6 +1855,87 @@ export default {
         return corsResponse(data);
       }
 
+      // ────────────────────────────────────────────────────────
+      // 구글 로그인 — 토큰 검증 + 허용 이메일 체크
+      // POST /auth/google  { idToken }
+      // ────────────────────────────────────────────────────────
+      if (url.pathname === '/auth/google' && request.method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        const { idToken } = body || {};
+        if (!idToken) return corsResponse({ error: 'idToken 필요' }, 400);
+
+        // 구글 토큰 검증 (tokeninfo 엔드포인트)
+        const verifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`);
+        if (!verifyRes.ok) return corsResponse({ error: '구글 토큰 검증 실패' }, 401);
+        const info = await verifyRes.json();
+
+        // 발급자 확인
+        if (!['accounts.google.com', 'https://accounts.google.com'].includes(info.iss)) {
+          return corsResponse({ error: '유효하지 않은 토큰' }, 401);
+        }
+
+        const email = info.email;
+        const userId = info.sub; // 구글 고유 ID
+
+        // 허용 이메일 목록 (KV에서 가져오거나 환경변수 사용)
+        const allowedRaw = env.ALLOWED_EMAILS || await env.KV.get('allowed_emails') || '';
+        const allowed = allowedRaw.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+
+        if (allowed.length > 0 && !allowed.includes(email.toLowerCase())) {
+          return corsResponse({ error: '접근 권한 없음', email }, 403);
+        }
+
+        return corsResponse({ ok: true, email, userId, name: info.name, picture: info.picture });
+      }
+
+      // ────────────────────────────────────────────────────────
+      // PWA 웹 푸시 구독 저장/삭제
+      // POST /push/subscribe   { userId, subscription }
+      // POST /push/unsubscribe { userId }
+      // ────────────────────────────────────────────────────────
+      if (url.pathname === '/push/subscribe' && request.method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        const { userId, subscription } = body || {};
+        if (!userId || !subscription) return corsResponse({ error: 'userId, subscription 필요' }, 400);
+        await env.KV.put(`push_sub:${userId}`, JSON.stringify(subscription), { expirationTtl: 60 * 60 * 24 * 90 }); // 90일
+        return corsResponse({ ok: true });
+      }
+
+      if (url.pathname === '/push/unsubscribe' && request.method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        const { userId } = body || {};
+        if (!userId) return corsResponse({ error: 'userId 필요' }, 400);
+        await env.KV.delete(`push_sub:${userId}`);
+        return corsResponse({ ok: true });
+      }
+
+      // ────────────────────────────────────────────────────────
+      // 계정별 보유종목 저장/조회
+      // GET  /user-holdings?userId=xxx
+      // POST /user-holdings  { userId, holdings }
+      // ────────────────────────────────────────────────────────
+      if (url.pathname === '/user-holdings') {
+        if (request.method === 'GET') {
+          const userId = url.searchParams.get('userId');
+          if (!userId) return corsResponse({ error: 'userId 필요' }, 400);
+          const data = await env.KV.get(`user:${userId}:holdings`, 'json');
+          return corsResponse({ holdings: data || [] });
+        }
+        if (request.method === 'POST') {
+          const body = await request.json().catch(() => ({}));
+          const { userId, holdings } = body || {};
+          if (!userId || !Array.isArray(holdings)) return corsResponse({ error: 'userId, holdings 필요' }, 400);
+          await env.KV.put(`user:${userId}:holdings`, JSON.stringify(holdings));
+          // 기존 tf_holdings도 소유자(지누님) 계정이면 함께 저장 (Cron 호환)
+          const ownerEmail = (env.ALLOWED_EMAILS || '').split(',')[0].trim();
+          const ownerKey = await env.KV.get('owner_user_id');
+          if (!ownerKey || ownerKey === userId) {
+            await env.TREND_TRACKER_KV.put('tf_holdings', JSON.stringify(holdings));
+          }
+          return corsResponse({ ok: true, count: holdings.length });
+        }
+      }
+
       return corsResponse({ error: '알 수 없는 경로' }, 404);
 
     } catch (err) {
