@@ -1759,7 +1759,7 @@ async function searchKisStocks(q) {
   if (!q || q.length < 1) return [];
   try {
     const res = await fetch(`${KIS_WORKER}/search?q=${encodeURIComponent(q)}`, {
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(30000),
     });
     if (!res.ok) {
       const txt = await res.text().catch(() => '');

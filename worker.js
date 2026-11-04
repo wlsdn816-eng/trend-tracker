@@ -894,7 +894,7 @@ async function loadMasterDB(env) {
     // KV에 masterDB 캐싱 (검색용 — TTL 25시간)
     try {
       if (env && env.KV) {
-        await env.KV.put('master_db_cache', JSON.stringify(masterDB), { expirationTtl: 25 * 60 * 60 });
+        await env.KV.put('master_db_cache', JSON.stringify(masterDB), { expirationTtl: 48 * 60 * 60 });
         console.log(`[마스터DB] KV 캐시 저장 완료: ${masterDB.length}개 종목`);
       }
     } catch (e) {
