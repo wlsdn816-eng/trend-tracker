@@ -1936,6 +1936,28 @@ export default {
         }
       }
 
+      // ────────────────────────────────────────────────────────
+      // 범용 사용자 데이터 저장/조회
+      // GET  /user-data?userId=xxx&key=journal
+      // POST /user-data  { userId, key, data }
+      // ────────────────────────────────────────────────────────
+      if (url.pathname === '/user-data') {
+        if (request.method === 'GET') {
+          const userId = url.searchParams.get('userId');
+          const key = url.searchParams.get('key');
+          if (!userId || !key) return corsResponse({ error: 'userId, key 필요' }, 400);
+          const data = await env.KV.get(`user:${userId}:${key}`, 'json');
+          return corsResponse({ data: data ?? null });
+        }
+        if (request.method === 'POST') {
+          const body = await request.json().catch(() => ({}));
+          const { userId, key, data } = body || {};
+          if (!userId || !key || data === undefined) return corsResponse({ error: 'userId, key, data 필요' }, 400);
+          await env.KV.put(`user:${userId}:${key}`, JSON.stringify(data));
+          return corsResponse({ ok: true });
+        }
+      }
+
       return corsResponse({ error: '알 수 없는 경로' }, 404);
 
     } catch (err) {

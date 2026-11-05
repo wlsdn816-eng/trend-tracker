@@ -1482,8 +1482,20 @@ function load(key) {
 function loadObj(key, def) {
   try { return JSON.parse(localStorage.getItem(key) || JSON.stringify(def)); } catch { return def; }
 }
+// KV 동기화 대상 키 → KV key 매핑
+const KV_SYNC_KEYS = {
+  'tf_journal':       'journal',
+  'tf_screener':      'screener',
+  'tf_favorites':     'favorites',
+  'kt_saved_positions': 'kt_positions',
+};
+
 function save(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
+  // KV 자동 동기화
+  if (KV_SYNC_KEYS[key]) {
+    saveUserData(KV_SYNC_KEYS[key], val).catch(() => {});
+  }
 }
 
 let screeners = load(KEYS.screener);
@@ -1820,6 +1832,9 @@ function onLoginSuccess(user, isNewLogin) {
   // 계정별 보유종목 로드
   loadUserHoldings();
 
+  // 전체 데이터 KV 동기화 (매매일지, 스크리너, 관심종목, 모의투자)
+  syncAllUserData();
+
   // PWA 푸시 초기화
   initPushNotification();
 
@@ -1883,6 +1898,89 @@ async function saveUserHoldings() {
       body: JSON.stringify({ userId: currentUser.userId, holdings }),
     });
   } catch(_) {}
+}
+
+// ─── KV 범용 데이터 동기화 ───────────────────────────────────
+async function saveUserData(key, data) {
+  if (!currentUser) return;
+  try {
+    await fetch(`${KIS_WORKER}/user-data`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: currentUser.userId, key, data }),
+    });
+  } catch(_) {}
+}
+
+async function loadUserData(key) {
+  if (!currentUser) return null;
+  try {
+    const res = await fetch(`${KIS_WORKER}/user-data?userId=${currentUser.userId}&key=${key}`);
+    const json = await res.json();
+    return json.data ?? null;
+  } catch(_) { return null; }
+}
+
+async function syncAllUserData() {
+  if (!currentUser) return;
+
+  // 1) 매매일지
+  const journal = await loadUserData('journal');
+  if (journal && Array.isArray(journal) && journal.length > 0) {
+    localStorage.setItem('tf_journal', JSON.stringify(journal));
+  } else {
+    const local = localStorage.getItem('tf_journal');
+    if (local) { try { const p = JSON.parse(local); if (p.length > 0) await saveUserData('journal', p); } catch(_) {} }
+  }
+
+  // 2) 스크리너
+  const screener = await loadUserData('screener');
+  if (screener && Array.isArray(screener) && screener.length > 0) {
+    localStorage.setItem('tf_screener', JSON.stringify(screener));
+  } else {
+    const local = localStorage.getItem('tf_screener');
+    if (local) { try { const p = JSON.parse(local); if (p.length > 0) await saveUserData('screener', p); } catch(_) {} }
+  }
+
+  // 3) 관심종목
+  const favorites = await loadUserData('favorites');
+  if (favorites && Array.isArray(favorites) && favorites.length > 0) {
+    localStorage.setItem('tf_favorites', JSON.stringify(favorites));
+  } else {
+    const local = localStorage.getItem('tf_favorites');
+    if (local) { try { const p = JSON.parse(local); if (p.length > 0) await saveUserData('favorites', p); } catch(_) {} }
+  }
+
+  // 4) 모의투자 설정 (seed, units)
+  const ktSettings = await loadUserData('kt_settings');
+  if (ktSettings) {
+    if (ktSettings.seed) localStorage.setItem('kt_seed', ktSettings.seed);
+    if (ktSettings.units) localStorage.setItem('kt_units', ktSettings.units);
+    if (ktSettings.risk) localStorage.setItem('kt_risk', ktSettings.risk);
+    if (ktSettings.stop) localStorage.setItem('kt_stop', ktSettings.stop);
+  } else {
+    const seed = localStorage.getItem('kt_seed');
+    const units = localStorage.getItem('kt_units');
+    if (seed || units) {
+      await saveUserData('kt_settings', {
+        seed: localStorage.getItem('kt_seed') || '',
+        units: localStorage.getItem('kt_units') || '',
+        risk: localStorage.getItem('kt_risk') || '',
+        stop: localStorage.getItem('kt_stop') || '',
+      });
+    }
+  }
+
+  // 5) 모의투자 저장 포지션
+  const ktPositions = await loadUserData('kt_positions');
+  if (ktPositions && Array.isArray(ktPositions) && ktPositions.length > 0) {
+    localStorage.setItem('kt_saved_positions', JSON.stringify(ktPositions));
+  } else {
+    const local = localStorage.getItem('kt_saved_positions');
+    if (local) { try { const p = JSON.parse(local); if (p.length > 0) await saveUserData('kt_positions', p); } catch(_) {} }
+  }
+
+  console.log('✅ 전체 데이터 KV 동기화 완료');
 }
 
 // ─── PWA 웹 푸시 ────────────────────────────────────────────
@@ -2664,6 +2762,7 @@ function ktSavePosition() {
   const list = ktGetSavedPositions();
   list.unshift(pos);
   localStorage.setItem(KT_POSITIONS_KEY, JSON.stringify(list));
+  saveUserData('kt_positions', list).catch(() => {});
   ktRenderSavedList();
 
   // 매매일지 보유종목에 자동 추가 (중복 방지: 동일 code가 없을 때만)
@@ -2756,6 +2855,7 @@ function ktLoadPosition(id) {
 function ktDeletePosition(id) {
   const list = ktGetSavedPositions().filter(x => x.id !== id);
   localStorage.setItem(KT_POSITIONS_KEY, JSON.stringify(list));
+  saveUserData('kt_positions', list).catch(() => {});
   ktRenderSavedList();
 }
 
