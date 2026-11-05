@@ -1832,10 +1832,8 @@ function onLoginSuccess(user, isNewLogin) {
   // 전체 데이터 KV 동기화 (매매일지, 스크리너, 관심종목, 모의투자)
   syncAllUserData();
 
-  // 앱 초기화 (기존 로직)
-  if (isNewLogin) {
-    initApp();
-  }
+  // 앱 초기화 — 신규 로그인·복원 모두 호출
+  initApp();
 }
 
 function signOut() {
