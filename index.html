@@ -4157,12 +4157,21 @@ async function loadHomeData(force) {
   const invBody = document.getElementById('home-investor-body');
   if (invBody) invBody.innerHTML = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;">로딩 중…</div>';
 
+  // 타임아웃 fetch 헬퍼 (10초)
+  function fetchWithTimeout(url, ms = 10000) {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), ms);
+    return fetch(url, { signal: ctrl.signal })
+      .then(r => { clearTimeout(tid); if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .catch(e => { clearTimeout(tid); throw e; });
+  }
+
   // 동시 4개 요청 (장세 배너 포함)
   const [idxRes, invRes, secRes, maRes] = await Promise.allSettled([
-    fetch(`${KIS_WORKER}/market-index`).then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }),
-    fetch(`${KIS_WORKER}/market-investor`).then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }),
-    fetch(`${KIS_WORKER}/market-sector`).then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }),
-    fetch(`${KIS_WORKER}/kospi-ma`).then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); }),
+    fetchWithTimeout(`${KIS_WORKER}/market-index`),
+    fetchWithTimeout(`${KIS_WORKER}/market-investor`),
+    fetchWithTimeout(`${KIS_WORKER}/market-sector`),
+    fetchWithTimeout(`${KIS_WORKER}/kospi-ma`),
   ]);
 
   const idx = idxRes.status === 'fulfilled' ? idxRes.value : null;

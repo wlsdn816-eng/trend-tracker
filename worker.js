@@ -1725,26 +1725,62 @@ export default {
 
       // GET /market-index
       if (url.pathname === '/market-index') {
-        const data = await getMarketIndex(env);
-        return corsResponse(data);
+        const CACHE_KEY = 'cache:market-index';
+        const CACHE_TTL = 5 * 60; // 5분
+        try {
+          const data = await getMarketIndex(env);
+          await env.KV.put(CACHE_KEY, JSON.stringify({ data, ts: Date.now() }), { expirationTtl: CACHE_TTL * 2 });
+          return corsResponse(data);
+        } catch(e) {
+          const cached = await env.KV.get(CACHE_KEY, 'json');
+          if (cached?.data) return corsResponse({ ...cached.data, _cached: true });
+          return corsResponse({ kospi: null, kosdaq: null, _error: e.message });
+        }
       }
 
       // GET /kospi-ma
       if (url.pathname === '/kospi-ma') {
-        const data = await getKospiMA(env);
-        return corsResponse(data);
+        const CACHE_KEY = 'cache:kospi-ma';
+        const CACHE_TTL = 10 * 60; // 10분
+        try {
+          const data = await getKospiMA(env);
+          await env.KV.put(CACHE_KEY, JSON.stringify({ data, ts: Date.now() }), { expirationTtl: CACHE_TTL * 2 });
+          return corsResponse(data);
+        } catch(e) {
+          const cached = await env.KV.get(CACHE_KEY, 'json');
+          if (cached?.data) return corsResponse({ ...cached.data, _cached: true });
+          return corsResponse({ curr: 0, ma60: 0, isBullish: false, _error: e.message });
+        }
       }
 
       // GET /market-investor
       if (url.pathname === '/market-investor') {
-        const data = await getMarketInvestor(env);
-        return corsResponse(data);
+        const CACHE_KEY = 'cache:market-investor';
+        const CACHE_TTL = 5 * 60;
+        try {
+          const data = await getMarketInvestor(env);
+          await env.KV.put(CACHE_KEY, JSON.stringify({ data, ts: Date.now() }), { expirationTtl: CACHE_TTL * 2 });
+          return corsResponse(data);
+        } catch(e) {
+          const cached = await env.KV.get(CACHE_KEY, 'json');
+          if (cached?.data) return corsResponse({ ...cached.data, _cached: true });
+          return corsResponse({ kospi: null, kosdaq: null, _error: e.message });
+        }
       }
 
       // GET /market-sector
       if (url.pathname === '/market-sector') {
-        const data = await getMarketSector(env);
-        return corsResponse(data);
+        const CACHE_KEY = 'cache:market-sector';
+        const CACHE_TTL = 10 * 60;
+        try {
+          const data = await getMarketSector(env);
+          await env.KV.put(CACHE_KEY, JSON.stringify({ data, ts: Date.now() }), { expirationTtl: CACHE_TTL * 2 });
+          return corsResponse(data);
+        } catch(e) {
+          const cached = await env.KV.get(CACHE_KEY, 'json');
+          if (cached?.data) return corsResponse({ ...cached.data, _cached: true });
+          return corsResponse({ kospi: [], kosdaq: [], _error: e.message });
+        }
       }
 
       // GET /blog-feed — 네이버 블로그 RSS (chcmg2022)
