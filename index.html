@@ -3575,10 +3575,48 @@ function renderJournalList() {
         <span class="data-label">기간</span>
         <span class="data-value">${j.buyDate||'—'} ~ ${j.sellDate||'—'}</span>
       </div>
-      ${j.note ? `<div class="journal-note">"${j.note}"</div>` : ''}
+      <div id="journal-note-area-${idx}">
+        ${j.note
+          ? `<div class="journal-note" style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+               <span>"${j.note}"</span>
+               <button onclick="editJournalNote(${idx})" style="flex-shrink:0;background:none;border:none;color:var(--fg3);font-size:11px;cursor:pointer;padding:0;line-height:1.4;">수정</button>
+             </div>`
+          : `<button onclick="editJournalNote(${idx})" style="margin-top:6px;background:none;border:1px dashed var(--border);border-radius:6px;color:var(--fg3);font-size:11px;cursor:pointer;padding:4px 10px;width:100%;text-align:left;">＋ 메모 추가</button>`
+        }
+      </div>
     </div>`;
   }).join('');
 }
+
+window.editJournalNote = (idx) => {
+  const area = document.getElementById(`journal-note-area-${idx}`);
+  if (!area) return;
+  const current = journal[idx]?.note || '';
+  area.innerHTML = `
+    <div style="margin-top:6px;display:flex;flex-direction:column;gap:6px;">
+      <textarea id="journal-note-input-${idx}" rows="2"
+        style="width:100%;box-sizing:border-box;border:1.5px solid var(--accent);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--bg);color:var(--fg);resize:vertical;outline:none;"
+        placeholder="메모를 입력하세요…">${current}</textarea>
+      <div style="display:flex;gap:6px;justify-content:flex-end;">
+        <button onclick="saveJournalNote(${idx})" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer;">저장</button>
+        <button onclick="cancelJournalNote(${idx})" style="background:var(--surface2,var(--surface));color:var(--fg2);border:1px solid var(--border);border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer;">취소</button>
+      </div>
+    </div>`;
+  const ta = document.getElementById(`journal-note-input-${idx}`);
+  if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+};
+
+window.saveJournalNote = (idx) => {
+  const ta = document.getElementById(`journal-note-input-${idx}`);
+  if (!ta) return;
+  journal[idx].note = ta.value.trim();
+  save(KEYS.journal, journal);
+  renderJournalList();
+};
+
+window.cancelJournalNote = (idx) => {
+  renderJournalList();
+};
 
 window.deleteJournalEntry = (i) => {
   if (!confirm('이 매매 기록을 삭제할까요?')) return;
