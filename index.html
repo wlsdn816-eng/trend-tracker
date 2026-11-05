@@ -2003,7 +2003,18 @@ async function initPush() {
     const res = await fetch(`${KIS_WORKER}/push/vapid-public-key`);
     if (res.ok) {
       const data = await res.json();
-      _vapidPublicKey = data.publicKey || null;
+      const raw = (data.publicKey || '').trim();
+      // 65바이트 uncompressed EC point인지 검증
+      try {
+        const b64 = raw.replace(/-/g,'+').replace(/_/g,'/');
+        const pad = '='.repeat((4 - b64.length % 4) % 4);
+        const buf = Uint8Array.from(atob(b64 + pad), c => c.charCodeAt(0));
+        _vapidPublicKey = (buf.length === 65 && buf[0] === 4) ? raw : null;
+        if (!_vapidPublicKey) console.warn('[Push] VAPID 공개키 형식 오류 — 길이:', buf.length, '첫바이트:', buf[0]);
+      } catch(e) {
+        _vapidPublicKey = null;
+        console.warn('[Push] VAPID 공개키 파싱 실패:', e);
+      }
     }
   } catch(_) {}
   updatePushButtonState();
