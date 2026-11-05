@@ -4249,11 +4249,13 @@ var homeLoaded = false;
 var homeLoadedAt = 0;
 const HOME_CACHE_MS = 5 * 60 * 1000; // 5분
 
+var homeLoading = false; // 중복 호출 방지
+
 async function loadHomeData(force) {
   const now = Date.now();
+  if (homeLoading) return; // 이미 로딩 중이면 무시
   if (homeLoaded && !force && (now - homeLoadedAt) < HOME_CACHE_MS) return;
-  homeLoaded = true;
-  homeLoadedAt = now;
+  homeLoading = true;
 
   // 로딩 표시 (배너도 리셋)
   const banner = document.getElementById('market-regime-banner');
@@ -4270,8 +4272,8 @@ async function loadHomeData(force) {
   const invBody = document.getElementById('home-investor-body');
   if (invBody) invBody.innerHTML = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;">로딩 중…</div>';
 
-  // 타임아웃 fetch 헬퍼 (10초)
-  function fetchWithTimeout(url, ms = 10000) {
+  // 타임아웃 fetch 헬퍼 (5초 — Worker 응답 느릴 때 빨리 포기)
+  function fetchWithTimeout(url, ms = 5000) {
     const ctrl = new AbortController();
     const tid = setTimeout(() => ctrl.abort(), ms);
     return fetch(url, { signal: ctrl.signal })
@@ -4279,33 +4281,58 @@ async function loadHomeData(force) {
       .catch(e => { clearTimeout(tid); throw e; });
   }
 
-  // 동시 4개 요청 (장세 배너 포함)
-  const [idxRes, invRes, secRes, maRes] = await Promise.allSettled([
-    fetchWithTimeout(`${KIS_WORKER}/market-index`),
-    fetchWithTimeout(`${KIS_WORKER}/market-investor`),
-    fetchWithTimeout(`${KIS_WORKER}/market-sector`),
-    fetchWithTimeout(`${KIS_WORKER}/kospi-ma`),
-  ]);
+  try {
+    // 동시 4개 요청 (장세 배너 포함)
+    const [idxRes, invRes, secRes, maRes] = await Promise.allSettled([
+      fetchWithTimeout(`${KIS_WORKER}/market-index`),
+      fetchWithTimeout(`${KIS_WORKER}/market-investor`),
+      fetchWithTimeout(`${KIS_WORKER}/market-sector`),
+      fetchWithTimeout(`${KIS_WORKER}/kospi-ma`),
+    ]);
 
-  const idx = idxRes.status === 'fulfilled' ? idxRes.value : null;
-  const inv = invRes.status === 'fulfilled' ? invRes.value : null;
-  const sec = secRes.status === 'fulfilled' ? secRes.value : null;
-  const ma  = maRes.status  === 'fulfilled' ? maRes.value  : null;
+    const idx = idxRes.status === 'fulfilled' ? idxRes.value : null;
+    const inv = invRes.status === 'fulfilled' ? invRes.value : null;
+    const sec = secRes.status === 'fulfilled' ? secRes.value : null;
+    const ma  = maRes.status  === 'fulfilled' ? maRes.value  : null;
 
-  renderMarketBanner(ma);
+    renderMarketBanner(ma);
 
-  if (idx) {
-    renderHomeIndex(idx);
+    if (idx) {
+      renderHomeIndex(idx);
+    } else {
+      // 실패 시 배너에 안내 표시 (무한 로딩 방지)
+      if (icon)   icon.textContent  = '📡';
+      if (label)  label.textContent = '시장 데이터 없음';
+      if (detail) detail.textContent = '잠시 후 다시 시도해주세요';
+    }
+
+    if (inv) {
+      renderHomeInvestor(inv);
+    } else {
+      if (invBody) invBody.innerHTML = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;">수급 데이터를 불러올 수 없습니다.</div>';
+    }
+
+    document.getElementById('home-update-time').textContent =
+      '업데이트: ' + new Date().toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit' });
+
+    // 성공적으로 완료된 경우에만 캐시 플래그 세팅
+    const anySuccess = [idxRes, invRes, secRes, maRes].some(r => r.status === 'fulfilled');
+    if (anySuccess) {
+      homeLoaded   = true;
+      homeLoadedAt = Date.now();
+    } else {
+      // 전부 실패하면 캐시 안 함 → 다음 탭 클릭 시 재시도
+      homeLoaded = false;
+    }
+  } catch(e) {
+    // 예외 발생 시에도 로딩 멈추지 않게
+    if (icon)   icon.textContent  = '📡';
+    if (label)  label.textContent = '데이터 없음';
+    if (invBody) invBody.innerHTML = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;">불러오기 실패. 탭 전환 후 다시 시도해주세요.</div>';
+    homeLoaded = false;
+  } finally {
+    homeLoading = false; // 항상 로딩 플래그 해제
   }
-
-  if (inv) {
-    renderHomeInvestor(inv);
-  } else {
-    if (invBody) invBody.innerHTML = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;">수급 데이터를 불러올 수 없습니다.</div>';
-  }
-
-  document.getElementById('home-update-time').textContent =
-    '업데이트: ' + new Date().toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit' });
 
   // 피드 로드 (비동기, 독립적으로 실행)
   loadHomeFeed();
