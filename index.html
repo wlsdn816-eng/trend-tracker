@@ -4344,10 +4344,17 @@ async function loadHomeData(force) {
       homeLoaded = false;
     }
   } catch(e) {
-    // 예외 발생 시에도 로딩 멈추지 않게
-    if (icon)   icon.textContent  = '📡';
-    if (label)  label.textContent = '데이터 없음';
+    // 예외 발생 시에도 로딩 멈추지 않게 — 배너 직접 업데이트
+    const _banner = document.getElementById('market-regime-banner');
+    const _icon   = document.getElementById('regime-icon');
+    const _label  = document.getElementById('regime-label');
+    const _detail = document.getElementById('regime-detail');
+    if (_icon)   _icon.textContent   = '📡';
+    if (_label)  _label.textContent  = '데이터 없음';
+    if (_detail) _detail.textContent = '탭 전환 후 재시도';
+    if (_banner) { _banner.style.background = 'var(--surface2)'; _banner.style.borderColor = 'var(--border)'; }
     if (invBody) invBody.innerHTML = '<div style="color:var(--fg3);font-size:12px;padding:12px 0;">불러오기 실패. 탭 전환 후 다시 시도해주세요.</div>';
+    document.getElementById('home-update-time').textContent = '업데이트 실패';
     homeLoaded = false;
   } finally {
     homeLoading = false; // 항상 로딩 플래그 해제
@@ -4387,10 +4394,12 @@ function renderMarketBanner(data) {
   const ma60el = document.getElementById('regime-ma60');
   if (!banner) return;
 
-  if (!data) {
-    icon.textContent  = '❓';
-    label.textContent = '장세 데이터 없음';
-    detail.textContent = '';
+  if (!data || data._error) {
+    icon.textContent   = '📡';
+    label.textContent  = '장세 데이터 없음';
+    detail.textContent = data?._error ? '잠시 후 재시도' : '';
+    banner.style.background  = 'var(--surface2)';
+    banner.style.borderColor = 'var(--border)';
     return;
   }
 
@@ -4872,10 +4881,9 @@ function buildCandleChart(bars) {
 }
 
 // ─── 앱 초기화 함수 ─────────────────────────────────────────
-async function initApp() {
-  try {
-    await fetch(`${KIS_WORKER}/token`); // 토큰 1회 발급 + KV 저장
-  } catch(_) {}
+function initApp() {
+  // 토큰 발급은 백그라운드로 — await 하지 않음 (홈 로딩 블로킹 방지)
+  fetch(`${KIS_WORKER}/token`).catch(() => {});
   loadHomeData();
 }
 
