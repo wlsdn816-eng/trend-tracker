@@ -1,5 +1,12 @@
 <title>추세추종 매매 트래커</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#2563eb">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="트래커">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' rx='40' fill='%232563eb'/%3E%3Ctext x='90' y='128' font-size='100' text-anchor='middle' font-family='system-ui'%3E%F0%9F%93%88%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
 
 <style>
@@ -788,7 +795,7 @@
         <img id="header-avatar" src="" alt="" width="28" height="28" style="border-radius:50%;object-fit:cover;">
         <span id="header-name" style="font-size:12px;color:var(--fg2);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
       </div>
-      <button id="push-toggle-btn" onclick="togglePushNotification()" style="display:none;background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:11px;color:var(--fg3);cursor:pointer;" title="알림 설정">🔔</button>
+      <button id="pwa-install-btn" onclick="showPwaGuide()" style="display:none;background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:11px;color:var(--fg3);cursor:pointer;" title="홈화면에 추가">📲</button>
       <button onclick="signOut()" id="signout-btn" style="display:none;background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:11px;color:var(--fg3);cursor:pointer;">로그아웃</button>
     </div>
   </header>
@@ -1814,16 +1821,13 @@ function onLoginSuccess(user, isNewLogin) {
   document.getElementById('header-name').textContent = user.name || user.email;
   document.getElementById('header-user').style.display = 'flex';
   document.getElementById('signout-btn').style.display = '';
-  document.getElementById('push-toggle-btn').style.display = '';
+  document.getElementById('pwa-install-btn').style.display = '';
 
   // 계정별 보유종목 로드
   loadUserHoldings();
 
   // 전체 데이터 KV 동기화 (매매일지, 스크리너, 관심종목, 모의투자)
   syncAllUserData();
-
-  // PWA 푸시 초기화
-  initPushNotification();
 
   // 앱 초기화 (기존 로직)
   if (isNewLogin) {
@@ -1970,71 +1974,82 @@ async function syncAllUserData() {
   console.log('✅ 전체 데이터 KV 동기화 완료');
 }
 
-// ─── PWA 웹 푸시 ────────────────────────────────────────────
-// VAPID 공개키 (worker.js에서 생성한 키 쌍의 공개키)
-const VAPID_PUBLIC_KEY = ''; // 아래 안내에 따라 입력
+// ─── PWA 홈화면 추가 안내 ────────────────────────────────────
+let _deferredInstallPrompt = null;
 
-async function initPushNotification() {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-  try {
-    await navigator.serviceWorker.register('/sw.js');
-    updatePushButtonState();
-  } catch(_) {}
-}
+// Android Chrome: beforeinstallprompt 이벤트 캐치
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  _deferredInstallPrompt = e;
+});
 
-async function updatePushButtonState() {
-  const btn = document.getElementById('push-toggle-btn');
-  if (!btn) return;
-  try {
-    const reg = await navigator.serviceWorker.ready;
-    const sub = await reg.pushManager.getSubscription();
-    btn.textContent = sub ? '🔔 알림 ON' : '🔕 알림 OFF';
-    btn.style.color = sub ? 'var(--accent)' : 'var(--fg3)';
-  } catch(_) {}
-}
-
-async function togglePushNotification() {
-  if (!currentUser) return;
-  if (!VAPID_PUBLIC_KEY) {
-    alert('VAPID 키 설정이 필요합니다.\nindex.html의 VAPID_PUBLIC_KEY를 입력하세요.');
+function showPwaGuide() {
+  // Android Chrome에서는 네이티브 설치 프롬프트 사용
+  if (_deferredInstallPrompt) {
+    _deferredInstallPrompt.prompt();
+    _deferredInstallPrompt.userChoice.then(() => { _deferredInstallPrompt = null; });
     return;
   }
-  try {
-    const reg = await navigator.serviceWorker.ready;
-    const existing = await reg.pushManager.getSubscription();
-    if (existing) {
-      // 구독 해제
-      await existing.unsubscribe();
-      await fetch(`${KIS_WORKER}/push/unsubscribe`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: currentUser.userId }),
-      });
-      alert('푸시 알림이 해제되었습니다.');
-    } else {
-      // 구독 등록
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-      });
-      await fetch(`${KIS_WORKER}/push/subscribe`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: currentUser.userId, subscription: sub.toJSON() }),
-      });
-      alert('✅ 푸시 알림이 등록되었습니다!\n매일 오후 4시 스캔 완료 후 알림이 옵니다.');
-    }
-    updatePushButtonState();
-  } catch(e) {
-    alert('알림 설정 오류: ' + e.message);
+
+  // iOS / 기타: 안내 모달 표시
+  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isInStandaloneMode = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+
+  if (isInStandaloneMode) {
+    showToast('이미 홈화면에 추가되어 있어요! 📲');
+    return;
   }
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:flex-end;background:rgba(0,0,0,0.5);';
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-radius:20px 20px 0 0;padding:24px;width:100%;max-width:480px;margin:0 auto;box-shadow:0 -4px 24px rgba(0,0,0,0.15);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <span style="font-weight:700;font-size:16px;color:var(--fg);">📲 홈화면에 추가하기</span>
+        <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--fg3);">✕</button>
+      </div>
+      ${isIos ? `
+      <div style="font-size:14px;color:var(--fg2);line-height:1.8;">
+        <div style="margin-bottom:12px;">Safari에서 아래 단계를 따라해 주세요:</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:10px;background:var(--surface2);border-radius:10px;">
+          <span style="font-size:22px;">1️⃣</span>
+          <span>하단 가운데 <strong>공유 버튼</strong> 탭 <span style="font-size:16px;">⎋</span></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:10px;background:var(--surface2);border-radius:10px;">
+          <span style="font-size:22px;">2️⃣</span>
+          <span>스크롤해서 <strong>"홈 화면에 추가"</strong> 탭</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--surface2);border-radius:10px;">
+          <span style="font-size:22px;">3️⃣</span>
+          <span>오른쪽 위 <strong>"추가"</strong> 탭</span>
+        </div>
+        <div style="margin-top:12px;font-size:12px;color:var(--fg3);">* iOS Safari에서만 가능합니다</div>
+      </div>
+      ` : `
+      <div style="font-size:14px;color:var(--fg2);line-height:1.8;">
+        <div style="margin-bottom:12px;">브라우저 메뉴에서 홈화면에 추가하세요:</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:10px;background:var(--surface2);border-radius:10px;">
+          <span style="font-size:22px;">1️⃣</span>
+          <span>주소창 오른쪽 <strong>⋮ 메뉴</strong> 탭</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--surface2);border-radius:10px;">
+          <span style="font-size:22px;">2️⃣</span>
+          <span><strong>"홈 화면에 추가"</strong> 또는 <strong>"앱 설치"</strong> 탭</span>
+        </div>
+      </div>
+      `}
+    </div>
+  `;
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
 }
 
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = atob(base64);
-  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;white-space:nowrap;';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
 }
 
 // 자주 쓰는 종목 프리셋

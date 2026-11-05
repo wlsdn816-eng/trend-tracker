@@ -1,0 +1,26 @@
+{
+  "name": "추세추종 매매 트래커",
+  "short_name": "트래커",
+  "description": "한국 주식 추세추종 매매 트래커 — 관제탑·매매일지·스크리너",
+  "start_url": "/trend-tracker/",
+  "scope": "/trend-tracker/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f7fa",
+  "theme_color": "#2563eb",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%232563eb'/%3E%3Ctext x='96' y='130' font-size='110' text-anchor='middle' font-family='system-ui'%3E📈%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='80' fill='%232563eb'/%3E%3Ctext x='256' y='360' font-size='300' text-anchor='middle' font-family='system-ui'%3E📈%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
