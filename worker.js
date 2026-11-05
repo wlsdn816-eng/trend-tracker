@@ -37,6 +37,98 @@ let tokenExpiry = 0;
 let tokenFetchPromise = null; // 동일 인스턴스 내 동시 발급 방지용 Promise 공유
 
 // ────────────────────────────────────────────────────────────
+// Web Push / VAPID 유틸리티
+// VAPID_PRIVATE_KEY, VAPID_PUBLIC_KEY 는 Worker Secret으로 설정
+// wrangler secret put VAPID_PRIVATE_KEY
+// wrangler secret put VAPID_PUBLIC_KEY
+// ────────────────────────────────────────────────────────────
+
+/** base64url → Uint8Array */
+function b64uDecode(str) {
+  const b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const raw = atob(b64 + pad);
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+
+/** Uint8Array → base64url */
+function b64uEncode(buf) {
+  return btoa(String.fromCharCode(...new Uint8Array(buf)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+/** VAPID JWT 생성 */
+async function makeVapidJwt(endpoint, privateKeyB64u, subject) {
+  const url   = new URL(endpoint);
+  const aud   = url.origin;
+  const exp   = Math.floor(Date.now() / 1000) + 12 * 3600;
+  const header  = b64uEncode(new TextEncoder().encode(JSON.stringify({ typ: 'JWT', alg: 'ES256' })));
+  const payload = b64uEncode(new TextEncoder().encode(JSON.stringify({ aud, exp, sub: subject })));
+  const data    = `${header}.${payload}`;
+
+  const keyBytes = b64uDecode(privateKeyB64u);
+  const key = await crypto.subtle.importKey(
+    'pkcs8', keyBytes,
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    false, ['sign']
+  );
+  const sig = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    key,
+    new TextEncoder().encode(data)
+  );
+  return `${data}.${b64uEncode(sig)}`;
+}
+
+/** 단일 구독자에게 Web Push 발송 */
+async function sendWebPush(subscription, payload, env) {
+  if (!env.VAPID_PRIVATE_KEY || !env.VAPID_PUBLIC_KEY) {
+    throw new Error('VAPID 키가 설정되지 않았습니다');
+  }
+  const sub     = typeof subscription === 'string' ? JSON.parse(subscription) : subscription;
+  const jwt     = await makeVapidJwt(sub.endpoint, env.VAPID_PRIVATE_KEY, 'mailto:wlsdn816@gmail.com');
+  const authHeader = `vapid t=${jwt},k=${env.VAPID_PUBLIC_KEY}`;
+
+  const body = typeof payload === 'string' ? payload : JSON.stringify(payload);
+  const res  = await fetch(sub.endpoint, {
+    method: 'POST',
+    headers: {
+      'Authorization': authHeader,
+      'Content-Type':  'application/octet-stream',
+      'Content-Encoding': 'aes128gcm',
+      'TTL': '86400',
+    },
+    body: new TextEncoder().encode(body),
+  });
+  if (!res.ok && res.status !== 201) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`Push failed ${res.status}: ${txt}`);
+  }
+  return res.status;
+}
+
+/** KV에 저장된 모든 구독자에게 푸시 발송 */
+async function broadcastPush(payload, env) {
+  const list = await env.KV.list({ prefix: 'push_sub:' });
+  const results = [];
+  for (const key of list.keys) {
+    try {
+      const sub = await env.KV.get(key.name, 'json');
+      if (!sub) continue;
+      await sendWebPush(sub, payload, env);
+      results.push({ key: key.name, ok: true });
+    } catch(e) {
+      results.push({ key: key.name, ok: false, error: e.message });
+      // 410 Gone = 구독 만료 → 삭제
+      if (e.message.includes('410')) {
+        await env.KV.delete(key.name).catch(() => {});
+      }
+    }
+  }
+  return results;
+}
+
+// ────────────────────────────────────────────────────────────
 // CORS 헤더
 // ────────────────────────────────────────────────────────────
 const CORS = {
@@ -1295,6 +1387,23 @@ export default {
       } catch(e) {
         console.error('리서치 피드 갱신 실패:', e);
       }
+
+      // 4) 웹 푸시 알림 발송 (VAPID 설정된 경우)
+      if (env.VAPID_PRIVATE_KEY && env.VAPID_PUBLIC_KEY) {
+        try {
+          const kstNow  = new Date(Date.now() + 9 * 60 * 60 * 1000);
+          const dateStr = `${kstNow.getMonth() + 1}/${kstNow.getDate()}`;
+          const payload = {
+            title: '📈 오늘의 스캔 완료',
+            body:  `${dateStr} 보유종목 종가 업데이트가 완료됐어요. 확인해보세요!`,
+            url:   'https://wlsdn816-eng.github.io/trend-tracker/',
+          };
+          const results = await broadcastPush(payload, env);
+          console.log('웹 푸시 발송 결과:', JSON.stringify(results));
+        } catch(e) {
+          console.error('웹 푸시 발송 실패:', e);
+        }
+      }
     })());
   },
 
@@ -1943,6 +2052,28 @@ export default {
         if (!userId) return corsResponse({ error: 'userId 필요' }, 400);
         await env.KV.delete(`push_sub:${userId}`);
         return corsResponse({ ok: true });
+      }
+
+      // GET /push/vapid-public-key — 클라이언트가 구독 시 사용할 공개키 반환
+      if (url.pathname === '/push/vapid-public-key' && request.method === 'GET') {
+        if (!env.VAPID_PUBLIC_KEY) return corsResponse({ error: 'VAPID 미설정' }, 503);
+        return corsResponse({ publicKey: env.VAPID_PUBLIC_KEY });
+      }
+
+      // POST /push/send { title, body, url } — 테스트 발송 (내부용)
+      if (url.pathname === '/push/send' && request.method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        const payload = {
+          title: body.title || '📈 추세추종 매매 트래커',
+          body:  body.body  || '알림 테스트',
+          url:   body.url   || 'https://wlsdn816-eng.github.io/trend-tracker/',
+        };
+        try {
+          const results = await broadcastPush(payload, env);
+          return corsResponse({ ok: true, results });
+        } catch(e) {
+          return corsResponse({ error: e.message }, 500);
+        }
       }
 
       // ────────────────────────────────────────────────────────

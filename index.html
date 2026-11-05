@@ -1824,7 +1824,7 @@ function onLoginSuccess(user, isNewLogin) {
   document.getElementById('signout-btn').style.display = '';
   document.getElementById('push-toggle-btn').style.display = '';
   document.getElementById('pwa-install-btn').style.display = '';
-  updatePushButtonState();
+  initPush();
 
   // 계정별 보유종목 로드
   loadUserHoldings();
@@ -1977,29 +1977,99 @@ async function syncAllUserData() {
   console.log('✅ 전체 데이터 KV 동기화 완료');
 }
 
-// ─── 앱 푸시 알림 (VAPID 준비 전 stub) ─────────────────────
-const VAPID_PUBLIC_KEY = ''; // 추후 Cloudflare Worker에서 생성한 공개키 입력
+// ─── 앱 푸시 알림 ────────────────────────────────────────────
+let _vapidPublicKey = null; // Worker에서 가져옴
+
+/** base64url → Uint8Array (브라우저용) */
+function urlBase64ToUint8Array(b64u) {
+  const b64 = b64u.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const raw = atob(b64 + pad);
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+
+/** sw.js 등록 + VAPID 공개키 로드 */
+async function initPush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  try {
+    // sw.js는 GitHub Pages 루트 경로 기준으로 등록
+    await navigator.serviceWorker.register('/trend-tracker/sw.js', { scope: '/trend-tracker/' });
+  } catch(e) {
+    console.warn('SW 등록 실패:', e);
+    return;
+  }
+  // Worker에서 VAPID 공개키 로드
+  try {
+    const res = await fetch(`${KIS_WORKER}/push/vapid-public-key`);
+    if (res.ok) {
+      const data = await res.json();
+      _vapidPublicKey = data.publicKey || null;
+    }
+  } catch(_) {}
+  updatePushButtonState();
+}
 
 async function updatePushButtonState() {
   const btn = document.getElementById('push-toggle-btn');
   if (!btn) return;
-  if (!VAPID_PUBLIC_KEY) { btn.textContent = '🔔'; return; }
+  if (!_vapidPublicKey) { btn.textContent = '🔔'; return; }
   try {
-    if (!('serviceWorker' in navigator)) return;
     const reg = await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.getSubscription();
     btn.textContent = sub ? '🔔 ON' : '🔔';
-    btn.style.color = sub ? 'var(--accent)' : 'var(--fg3)';
+    btn.style.color  = sub ? 'var(--accent)' : 'var(--fg3)';
   } catch(_) {}
 }
 
 async function togglePushNotification() {
-  if (!VAPID_PUBLIC_KEY) {
-    showToast('🔔 앱 푸시 알림은 준비 중이에요!');
+  if (!currentUser) return;
+
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    showToast('이 브라우저는 푸시 알림을 지원하지 않아요');
     return;
   }
-  // VAPID 키 설정 후 아래 로직 활성화
-  showToast('알림 설정 준비 중…');
+
+  if (!_vapidPublicKey) {
+    showToast('🔔 앱 푸시 알림 준비 중이에요! (Worker 재배포 후 사용 가능)');
+    return;
+  }
+
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+
+    if (existing) {
+      // ── 구독 해제 ──
+      await existing.unsubscribe();
+      await fetch(`${KIS_WORKER}/push/unsubscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.userId }),
+      });
+      showToast('🔕 푸시 알림이 해제되었어요');
+    } else {
+      // ── 알림 권한 요청 ──
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') {
+        showToast('알림 권한이 필요해요. 브라우저 설정에서 허용해 주세요.');
+        return;
+      }
+      // ── 구독 등록 ──
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(_vapidPublicKey),
+      });
+      await fetch(`${KIS_WORKER}/push/subscribe`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.userId, subscription: sub.toJSON() }),
+      });
+      showToast('🔔 푸시 알림 ON! 매일 오후 4시 알림이 와요');
+    }
+    updatePushButtonState();
+  } catch(e) {
+    showToast('알림 설정 오류: ' + e.message);
+  }
 }
 
 // ─── PWA 홈화면 추가 안내 ────────────────────────────────────
