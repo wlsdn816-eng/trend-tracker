@@ -1007,7 +1007,11 @@
       <!-- ① 리스크 설정 카드 -->
       <div class="section-head"><h2>깡토 추세추종 계산기</h2></div>
       <div class="card" id="kangto-setting-card">
-        <div class="card-title" style="font-size:14px;margin-bottom:12px;">⚙️ 리스크 설정</div>
+        <div class="card-title" id="risk-setting-toggle" style="font-size:14px;margin-bottom:0;cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none;">
+          <span>⚙️ 리스크 설정</span>
+          <span id="risk-setting-arrow" style="font-size:12px;color:var(--fg3);transition:transform 0.2s;">▼</span>
+        </div>
+        <div id="risk-setting-body" style="display:none;margin-top:12px;">
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">시드머니 (원)</label>
@@ -1053,6 +1057,7 @@
             </div>
           </div>
         </div>
+        </div><!-- /risk-setting-body -->
       </div>
 
       <!-- ② 종목 계산 카드 -->
@@ -2384,6 +2389,27 @@ const KT_UNITS_KEY = 'kt_units';
   if (u) document.getElementById('kt-units').value = u;
   // 저장 목록 초기 렌더 (함수 정의 후 호출)
   setTimeout(() => { if (typeof ktRenderSavedList === 'function') ktRenderSavedList(); }, 0);
+})();
+
+// 리스크 설정 토글
+(function() {
+  const toggle = document.getElementById('risk-setting-toggle');
+  const body   = document.getElementById('risk-setting-body');
+  const arrow  = document.getElementById('risk-setting-arrow');
+  if (!toggle || !body) return;
+  toggle.addEventListener('click', () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : 'block';
+    arrow.style.transform = open ? '' : 'rotate(180deg)';
+    try { localStorage.setItem('risk_setting_open', open ? '0' : '1'); } catch(_) {}
+  });
+  // 이전 상태 복원 (기본값: 접힘)
+  try {
+    if (localStorage.getItem('risk_setting_open') === '1') {
+      body.style.display = 'block';
+      arrow.style.transform = 'rotate(180deg)';
+    }
+  } catch(_) {}
 })();
 
 // 설정 변경 시 저장 + 요약 업데이트
