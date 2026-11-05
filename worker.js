@@ -1260,7 +1260,7 @@ export default {
     ctx.waitUntil((async () => {
       // 1) 보유 포지션 종가 스냅샷 KV에 저장
       try {
-        const holdingsRaw = await env.TREND_TRACKER_KV.get('tf_holdings');
+        const holdingsRaw = await env.KV.get('tf_holdings');
         if (holdingsRaw) {
           const holdings = JSON.parse(holdingsRaw);
           const codes = [...new Set(holdings.map(h => h.code).filter(Boolean))];
@@ -1277,7 +1277,7 @@ export default {
                 quotes[codes[i]] = { curr: r.value.curr, chg: r.value.chg, name: r.value.name };
               }
             });
-            await env.TREND_TRACKER_KV.put(
+            await env.KV.put(
               'tf_holdings_quotes',
               JSON.stringify({ quotes, fetchedAt, fetchedTime }),
               { expirationTtl: 7 * 24 * 60 * 60 }
@@ -1685,7 +1685,7 @@ export default {
 
       // GET /holdings-quotes
       if (url.pathname === '/holdings-quotes') {
-        const cached = await env.TREND_TRACKER_KV.get('tf_holdings_quotes', 'json');
+        const cached = await env.KV.get('tf_holdings_quotes', 'json');
         if (!cached) return corsResponse({ error: '아직 저장된 종가 데이터가 없습니다. 다음 평일 오후 4시에 자동 업데이트됩니다.' }, 404);
         return corsResponse(cached);
       }
@@ -1695,7 +1695,7 @@ export default {
         const body = await request.json();
         const holdings = body.holdings;
         if (!Array.isArray(holdings)) return corsResponse({ error: 'holdings 배열 필요' }, 400);
-        await env.TREND_TRACKER_KV.put('tf_holdings', JSON.stringify(holdings));
+        await env.KV.put('tf_holdings', JSON.stringify(holdings));
         return corsResponse({ ok: true, count: holdings.length });
       }
 
@@ -1930,7 +1930,7 @@ export default {
           const ownerEmail = (env.ALLOWED_EMAILS || '').split(',')[0].trim();
           const ownerKey = await env.KV.get('owner_user_id');
           if (!ownerKey || ownerKey === userId) {
-            await env.TREND_TRACKER_KV.put('tf_holdings', JSON.stringify(holdings));
+            await env.KV.put('tf_holdings', JSON.stringify(holdings));
           }
           return corsResponse({ ok: true, count: holdings.length });
         }
