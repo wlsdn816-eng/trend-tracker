@@ -795,6 +795,7 @@
         <img id="header-avatar" src="" alt="" width="28" height="28" style="border-radius:50%;object-fit:cover;">
         <span id="header-name" style="font-size:12px;color:var(--fg2);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
       </div>
+      <button id="push-toggle-btn" onclick="togglePushNotification()" style="display:none;background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:11px;color:var(--fg3);cursor:pointer;" title="알림 설정">🔔</button>
       <button id="pwa-install-btn" onclick="showPwaGuide()" style="display:none;background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:11px;color:var(--fg3);cursor:pointer;" title="홈화면에 추가">📲</button>
       <button onclick="signOut()" id="signout-btn" style="display:none;background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:11px;color:var(--fg3);cursor:pointer;">로그아웃</button>
     </div>
@@ -1821,7 +1822,9 @@ function onLoginSuccess(user, isNewLogin) {
   document.getElementById('header-name').textContent = user.name || user.email;
   document.getElementById('header-user').style.display = 'flex';
   document.getElementById('signout-btn').style.display = '';
+  document.getElementById('push-toggle-btn').style.display = '';
   document.getElementById('pwa-install-btn').style.display = '';
+  updatePushButtonState();
 
   // 계정별 보유종목 로드
   loadUserHoldings();
@@ -1972,6 +1975,31 @@ async function syncAllUserData() {
   }
 
   console.log('✅ 전체 데이터 KV 동기화 완료');
+}
+
+// ─── 앱 푸시 알림 (VAPID 준비 전 stub) ─────────────────────
+const VAPID_PUBLIC_KEY = ''; // 추후 Cloudflare Worker에서 생성한 공개키 입력
+
+async function updatePushButtonState() {
+  const btn = document.getElementById('push-toggle-btn');
+  if (!btn) return;
+  if (!VAPID_PUBLIC_KEY) { btn.textContent = '🔔'; return; }
+  try {
+    if (!('serviceWorker' in navigator)) return;
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    btn.textContent = sub ? '🔔 ON' : '🔔';
+    btn.style.color = sub ? 'var(--accent)' : 'var(--fg3)';
+  } catch(_) {}
+}
+
+async function togglePushNotification() {
+  if (!VAPID_PUBLIC_KEY) {
+    showToast('🔔 앱 푸시 알림은 준비 중이에요!');
+    return;
+  }
+  // VAPID 키 설정 후 아래 로직 활성화
+  showToast('알림 설정 준비 중…');
 }
 
 // ─── PWA 홈화면 추가 안내 ────────────────────────────────────
