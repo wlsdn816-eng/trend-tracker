@@ -1526,7 +1526,21 @@ export default {
             console.error('KV 저장 실패 (무시하고 카카오 전송 진행):', e.message);
           }
           if (sendKakao) await sendKakaoScanAlert(env, basicData, strictData);
-          return corsResponse({ ok: true, saved: kvSaved, basicHits: basicResults.length, strictHits: strictResults.length, total, scannedAt });
+
+          // 웹 푸시 알림 — KV에 등록된 모든 구독자에게 발송
+          let pushResults = [];
+          try {
+            const pushMsg = {
+              title: '📈 자동 스크리너 완료',
+              body: `기본 ${basicResults.length}종목 · 엄격 ${strictResults.length}종목 발굴 (${total.toLocaleString()}종목 스캔)`,
+              url: '/trend-tracker/#screener'
+            };
+            pushResults = await broadcastPush(pushMsg, env);
+          } catch(e) {
+            console.error('웹 푸시 발송 실패:', e.message);
+          }
+
+          return corsResponse({ ok: true, saved: kvSaved, basicHits: basicResults.length, strictHits: strictResults.length, total, scannedAt, pushSent: pushResults.length });
         }
 
         // ── 청크 스캔 모드: 결과만 반환, KV 쓰기 없음 ──
