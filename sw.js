@@ -18,7 +18,12 @@ self.addEventListener('fetch', e => {
 
 // 푸시 알림 수신
 self.addEventListener('push', e => {
-  if (!e.data) return;
+  console.log('[SW] push 이벤트 수신:', e.data ? e.data.text().slice(0,50) : 'no data');
+  if (!e.data) {
+    // 데이터 없어도 알림 표시
+    e.waitUntil(self.registration.showNotification('📈 알림', { body: '새 알림이 있어요.' }));
+    return;
+  }
 
   let data = {};
   try { data = e.data.json(); } catch(_) {
