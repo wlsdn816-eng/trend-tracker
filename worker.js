@@ -2293,6 +2293,13 @@ export default {
         }
       }
 
+      // 수동 Cron 트리거 (관리용)
+      if (url.pathname === '/run-cron' && request.method === 'GET') {
+        const ctx = { waitUntil: (p) => p };
+        await this.scheduled({}, env, ctx);
+        return corsResponse({ ok: true, message: '스크리너 실행 완료' });
+      }
+
       return corsResponse({ error: '알 수 없는 경로' }, 404);
 
     } catch (err) {
