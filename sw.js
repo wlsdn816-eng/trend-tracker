@@ -10,6 +10,12 @@ self.addEventListener('activate', e => {
   e.waitUntil(clients.claim());
 });
 
+// fetch 핸들러 — Android Chrome이 push 수신 시 SW를 깨우려면 필요
+self.addEventListener('fetch', e => {
+  // 네트워크 요청은 그냥 통과 (캐시 없이 패스스루)
+  e.respondWith(fetch(e.request));
+});
+
 // 푸시 알림 수신
 self.addEventListener('push', e => {
   if (!e.data) return;
