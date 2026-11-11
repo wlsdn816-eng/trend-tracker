@@ -813,6 +813,7 @@
         <span id="header-name" style="font-size:12px;color:var(--fg2);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
       </div>
       <button id="push-toggle-btn" onclick="togglePushNotification()" style="display:none;background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:11px;color:var(--fg3);cursor:pointer;" title="알림 설정">🔔</button>
+      <button id="push-local-test-btn" onclick="testLocalNotification()" style="display:none;background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:11px;color:var(--fg3);cursor:pointer;" title="알림 직접 테스트">🧪</button>
       <button id="pwa-install-btn" onclick="showPwaGuide()" style="display:none;background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:11px;color:var(--fg3);cursor:pointer;" title="홈화면에 추가">📲</button>
       <button onclick="signOut()" id="signout-btn" style="display:none;background:none;border:1px solid var(--border);border-radius:8px;padding:4px 8px;font-size:11px;color:var(--fg3);cursor:pointer;">로그아웃</button>
     </div>
@@ -1840,6 +1841,7 @@ function onLoginSuccess(user, isNewLogin) {
   document.getElementById('header-user').style.display = 'flex';
   document.getElementById('signout-btn').style.display = '';
   document.getElementById('push-toggle-btn').style.display = '';
+  document.getElementById('push-local-test-btn').style.display = '';
   document.getElementById('pwa-install-btn').style.display = '';
   initPush();
 
@@ -2033,6 +2035,20 @@ async function initPush() {
     }
   } catch(_) {}
   updatePushButtonState();
+}
+
+// SW 알림 직접 테스트 (FCM 없이)
+async function testLocalNotification() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    await reg.showNotification('🧪 직접 테스트', {
+      body: 'SW가 알림을 띄울 수 있어요!',
+      icon: '/trend-tracker/icon-192.png',
+    });
+    showToast('알림 띄웠어요! 위에 뜨는지 확인해주세요');
+  } catch(e) {
+    showToast('실패: ' + e.message);
+  }
 }
 
 async function updatePushButtonState() {
