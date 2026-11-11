@@ -2133,15 +2133,26 @@ export default {
         const body = await request.json().catch(() => ({}));
         const { userId, subscription } = body || {};
         if (!userId || !subscription) return corsResponse({ error: 'userId, subscription 필요' }, 400);
-        await env.KV.put(`push_sub:${userId}`, JSON.stringify(subscription), { expirationTtl: 60 * 60 * 24 * 90 }); // 90일
+        // 기기별 별도 저장 — endpoint 끝 20자를 키로 사용해 같은 기기는 덮어쓰고 다른 기기는 추가
+        const sub = typeof subscription === 'string' ? JSON.parse(subscription) : subscription;
+        const epKey = (sub.endpoint || '').slice(-20).replace(/[^a-zA-Z0-9]/g, '_');
+        await env.KV.put(`push_sub:${userId}:${epKey}`, JSON.stringify(subscription), { expirationTtl: 60 * 60 * 24 * 90 }); // 90일
         return corsResponse({ ok: true });
       }
 
       if (url.pathname === '/push/unsubscribe' && request.method === 'POST') {
         const body = await request.json().catch(() => ({}));
-        const { userId } = body || {};
+        const { userId, subscription } = body || {};
         if (!userId) return corsResponse({ error: 'userId 필요' }, 400);
-        await env.KV.delete(`push_sub:${userId}`);
+        if (subscription) {
+          // 특정 기기만 해제
+          const sub = typeof subscription === 'string' ? JSON.parse(subscription) : subscription;
+          const epKey = (sub.endpoint || '').slice(-20).replace(/[^a-zA-Z0-9]/g, '_');
+          await env.KV.delete(`push_sub:${userId}:${epKey}`);
+        } else {
+          // 이전 형식 키도 같이 삭제
+          await env.KV.delete(`push_sub:${userId}`);
+        }
         return corsResponse({ ok: true });
       }
 

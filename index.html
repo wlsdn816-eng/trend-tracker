@@ -2053,7 +2053,7 @@ async function togglePushNotification() {
       await fetch(`${KIS_WORKER}/push/unsubscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: currentUser.userId }),
+        body: JSON.stringify({ userId: currentUser.userId, subscription: existing.toJSON() }),
       });
       showToast('🔕 푸시 알림이 해제되었어요');
     } else {
