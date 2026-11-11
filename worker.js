@@ -2162,6 +2162,32 @@ export default {
         return corsResponse({ publicKey: env.VAPID_PUBLIC_KEY });
       }
 
+      // GET /push/debug-vapid — VAPID 키 형식 검증
+      if (url.pathname === '/push/debug-vapid' && request.method === 'GET') {
+        try {
+          const pub = env.VAPID_PUBLIC_KEY || '';
+          const priv = env.VAPID_PRIVATE_KEY || '';
+          const pubBytes = b64uDecode(pub);
+          const privBytes = b64uDecode(priv);
+          // VAPID public key는 65바이트 uncompressed P-256 point여야 함
+          // VAPID private key는 PKCS8 DER 형식이어야 함
+          let privValid = false;
+          try {
+            await crypto.subtle.importKey('pkcs8', privBytes, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+            privValid = true;
+          } catch(e) { privValid = false; }
+          return corsResponse({
+            pub_len: pubBytes.length,       // 정상: 65
+            pub_prefix: pubBytes[0],        // 정상: 4 (uncompressed)
+            priv_len: privBytes.length,     // 정상: PKCS8은 보통 138~141바이트
+            priv_valid_pkcs8: privValid,
+            pub_first10: pub.slice(0, 10),
+          });
+        } catch(e) {
+          return corsResponse({ error: e.message });
+        }
+      }
+
       // GET /push/debug-subs — 저장된 구독 endpoint 확인 (디버그용)
       if (url.pathname === '/push/debug-subs' && request.method === 'GET') {
         const list = await env.KV.list({ prefix: 'push_sub:' });
