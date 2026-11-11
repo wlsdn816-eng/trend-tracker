@@ -1,5 +1,5 @@
 // Service Worker — 추세추종 매매 트래커 PWA
-const CACHE_NAME = 'trend-tracker-v2';
+const CACHE_NAME = 'trend-tracker-v3';
 const BASE = '/trend-tracker';
 
 self.addEventListener('install', e => {
