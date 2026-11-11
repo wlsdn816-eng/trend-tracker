@@ -2176,7 +2176,7 @@ function showPwaGuide() {
 
 function showToast(msg) {
   const t = document.createElement('div');
-  t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;white-space:nowrap;';
+  t.style.cssText = 'position:fixed;bottom:calc(72px + env(safe-area-inset-bottom, 0px));left:50%;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;white-space:nowrap;max-width:90vw;text-align:center;';
   t.textContent = msg;
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 2500);
