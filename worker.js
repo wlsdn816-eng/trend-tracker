@@ -2330,6 +2330,21 @@ export default {
       }
 
       // POST /push/send { title, body, url } — 테스트 발송 (내부용)
+      // GET /push/test — 브라우저에서 바로 테스트용
+      if (url.pathname === '/push/test' && request.method === 'GET') {
+        const payload = {
+          title: '🔔 FCM v1 테스트',
+          body:  '알림이 정상 작동해요!',
+          url:   'https://wlsdn816-eng.github.io/trend-tracker/',
+        };
+        try {
+          const results = await broadcastPush(payload, env);
+          return corsResponse({ ok: true, results });
+        } catch(e) {
+          return corsResponse({ error: e.message, stack: e.stack }, 500);
+        }
+      }
+
       if (url.pathname === '/push/send' && request.method === 'POST') {
         const body = await request.json().catch(() => ({}));
         const payload = {
