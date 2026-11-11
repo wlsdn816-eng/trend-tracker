@@ -2162,6 +2162,17 @@ export default {
         return corsResponse({ publicKey: env.VAPID_PUBLIC_KEY });
       }
 
+      // GET /push/debug-subs — 저장된 구독 endpoint 확인 (디버그용)
+      if (url.pathname === '/push/debug-subs' && request.method === 'GET') {
+        const list = await env.KV.list({ prefix: 'push_sub:' });
+        const subs = await Promise.all(list.keys.map(async k => {
+          const sub = await env.KV.get(k.name, 'json');
+          const ep = (sub?.endpoint || '');
+          return { key: k.name, endpoint: ep.substring(0, 60) + '...' };
+        }));
+        return corsResponse({ subs });
+      }
+
       // POST /push/send { title, body, url } — 테스트 발송 (내부용)
       if (url.pathname === '/push/send' && request.method === 'POST') {
         const body = await request.json().catch(() => ({}));
