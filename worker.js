@@ -192,8 +192,8 @@ async function broadcastPush(payload, env) {
     try {
       const sub = await env.KV.get(key.name, 'json');
       if (!sub) continue;
-      await sendWebPush(sub, payload, env);
-      results.push({ key: key.name, ok: true });
+      const status = await sendWebPush(sub, payload, env);
+      results.push({ key: key.name, ok: true, status });
     } catch(e) {
       results.push({ key: key.name, ok: false, error: e.message });
       // 410 Gone = 구독 만료 → 삭제
