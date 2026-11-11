@@ -80,25 +80,102 @@ async function makeVapidJwt(endpoint, privateKeyB64u, subject) {
   return `${data}.${b64uEncode(sig)}`;
 }
 
-/** 단일 구독자에게 Web Push 발송 */
+/**
+ * Web Push 암호화 (RFC 8291 / aes128gcm)
+ * 구독 정보의 p256dh(브라우저 공개키)와 auth(인증 비밀)를 사용해
+ * ECDH 키 교환 → HKDF 키 도출 → AES-128-GCM 암호화
+ */
+async function encryptWebPush(subscription, plaintext) {
+  const sub = typeof subscription === 'string' ? JSON.parse(subscription) : subscription;
+  const p256dh = b64uDecode(sub.keys.p256dh);
+  const auth   = b64uDecode(sub.keys.auth);
+
+  // 1) 임시 EC 키쌍 생성 (발신자)
+  const senderKeys = await crypto.subtle.generateKey(
+    { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']
+  );
+  const senderPubRaw = new Uint8Array(
+    await crypto.subtle.exportKey('raw', senderKeys.publicKey)
+  );
+
+  // 2) 수신자(브라우저) 공개키 import
+  const receiverPub = await crypto.subtle.importKey(
+    'raw', p256dh, { name: 'ECDH', namedCurve: 'P-256' }, false, []
+  );
+
+  // 3) ECDH shared secret (32바이트)
+  const sharedBits = new Uint8Array(
+    await crypto.subtle.deriveBits(
+      { name: 'ECDH', public: receiverPub }, senderKeys.privateKey, 256
+    )
+  );
+
+  // 4) salt 16바이트 랜덤 생성
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+
+  // 5) HKDF-SHA256 헬퍼
+  async function hkdf(ikm, salt_, info, len) {
+    const keyMat = await crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits']);
+    return new Uint8Array(await crypto.subtle.deriveBits(
+      { name: 'HKDF', hash: 'SHA-256', salt: salt_, info }, keyMat, len * 8
+    ));
+  }
+
+  // 6) PRK = HKDF-Extract(auth, sharedSecret)
+  const prk = await hkdf(sharedBits, auth,
+    concat(str('WebPush: info\x00'), p256dh, senderPubRaw), 32);
+
+  // 7) CEK(16바이트)와 Nonce(12바이트) 도출
+  const cek   = await hkdf(prk, salt, str('Content-Encryption-Key\x00\x01'), 16);
+  const nonce = await hkdf(prk, salt, str('Nonce\x00\x01'), 12);
+
+  // 8) AES-128-GCM 암호화 (패딩: 평문 끝에 \x02 추가)
+  const pt = concat(new TextEncoder().encode(
+    typeof plaintext === 'string' ? plaintext : JSON.stringify(plaintext)
+  ), new Uint8Array([2]));
+
+  const aesKey = await crypto.subtle.importKey('raw', cek, 'AES-GCM', false, ['encrypt']);
+  const ct = new Uint8Array(
+    await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce, tagLength: 128 }, aesKey, pt)
+  );
+
+  // 9) aes128gcm 레코드: salt(16) + rs(4) + keyidlen(1) + senderPub(65) + ciphertext
+  const rs = new Uint8Array(4);
+  new DataView(rs.buffer).setUint32(0, 4096, false);
+  const header = concat(salt, rs, new Uint8Array([65]), senderPubRaw);
+  return concat(header, ct);
+
+  function str(s) { return new TextEncoder().encode(s); }
+  function concat(...arrays) {
+    const len = arrays.reduce((n, a) => n + a.length, 0);
+    const out = new Uint8Array(len);
+    let off = 0;
+    for (const a of arrays) { out.set(a, off); off += a.length; }
+    return out;
+  }
+}
+
+/** 단일 구독자에게 Web Push 발송 (RFC 8291 암호화 적용) */
 async function sendWebPush(subscription, payload, env) {
   if (!env.VAPID_PRIVATE_KEY || !env.VAPID_PUBLIC_KEY) {
     throw new Error('VAPID 키가 설정되지 않았습니다');
   }
-  const sub     = typeof subscription === 'string' ? JSON.parse(subscription) : subscription;
-  const jwt     = await makeVapidJwt(sub.endpoint, env.VAPID_PRIVATE_KEY, 'mailto:wlsdn816@gmail.com');
+  const sub = typeof subscription === 'string' ? JSON.parse(subscription) : subscription;
+  const jwt = await makeVapidJwt(sub.endpoint, env.VAPID_PRIVATE_KEY, 'mailto:wlsdn816@gmail.com');
   const authHeader = `vapid t=${jwt},k=${env.VAPID_PUBLIC_KEY}`;
 
-  const body = typeof payload === 'string' ? payload : JSON.stringify(payload);
-  const res  = await fetch(sub.endpoint, {
+  // 실제 aes128gcm 암호화 적용
+  const encrypted = await encryptWebPush(sub, payload);
+
+  const res = await fetch(sub.endpoint, {
     method: 'POST',
     headers: {
-      'Authorization': authHeader,
-      'Content-Type':  'application/octet-stream',
+      'Authorization':    authHeader,
+      'Content-Type':     'application/octet-stream',
       'Content-Encoding': 'aes128gcm',
-      'TTL': '86400',
+      'TTL':              '86400',
     },
-    body: new TextEncoder().encode(body),
+    body: encrypted,
   });
   if (!res.ok && res.status !== 201) {
     const txt = await res.text().catch(() => '');
