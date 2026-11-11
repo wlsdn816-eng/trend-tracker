@@ -2068,11 +2068,15 @@ async function togglePushNotification() {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(_vapidPublicKey),
       });
-      await fetch(`${KIS_WORKER}/push/subscribe`, {
+      const subRes = await fetch(`${KIS_WORKER}/push/subscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: currentUser.userId, subscription: sub.toJSON() }),
       });
+      if (!subRes.ok) {
+        const errText = await subRes.text().catch(() => '');
+        throw new Error(`구독 저장 실패 (${subRes.status}): ${errText}`);
+      }
       showToast('🔔 푸시 알림 ON! 매일 오후 4시 알림이 와요');
     }
     updatePushButtonState();
