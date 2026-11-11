@@ -2173,6 +2173,35 @@ export default {
         return corsResponse({ subs });
       }
 
+      // POST /push/send-raw — 암호화 없이 평문 발송 (디버그용)
+      if (url.pathname === '/push/send-raw' && request.method === 'POST') {
+        const body = await request.json().catch(() => ({}));
+        const payload = JSON.stringify({ title: body.title || '테스트', body: body.body || '평문 테스트' });
+        const list = await env.KV.list({ prefix: 'push_sub:' });
+        const results = [];
+        for (const key of list.keys) {
+          try {
+            const sub = await env.KV.get(key.name, 'json');
+            if (!sub) continue;
+            const jwt = await makeVapidJwt(sub.endpoint, env.VAPID_PRIVATE_KEY, 'mailto:wlsdn816@gmail.com');
+            const res = await fetch(sub.endpoint, {
+              method: 'POST',
+              headers: {
+                'Authorization': `vapid t=${jwt},k=${env.VAPID_PUBLIC_KEY}`,
+                'Content-Type': 'application/json',
+                'TTL': '86400',
+              },
+              body: payload,
+            });
+            const txt = await res.text().catch(() => '');
+            results.push({ key: key.name, status: res.status, body: txt.slice(0, 100) });
+          } catch(e) {
+            results.push({ key: key.name, error: e.message });
+          }
+        }
+        return corsResponse({ ok: true, results });
+      }
+
       // POST /push/send { title, body, url } — 테스트 발송 (내부용)
       if (url.pathname === '/push/send' && request.method === 'POST') {
         const body = await request.json().catch(() => ({}));
