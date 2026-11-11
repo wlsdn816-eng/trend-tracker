@@ -155,12 +155,113 @@ async function encryptWebPush(subscription, plaintext) {
   }
 }
 
+/** FCM v1 API — 서비스 계정으로 OAuth2 액세스 토큰 발급 */
+async function getFcmAccessToken(env) {
+  if (!env.FIREBASE_SERVICE_ACCOUNT) throw new Error('FIREBASE_SERVICE_ACCOUNT 미설정');
+  const sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
+
+  // JWT 생성 (RS256)
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const claim  = {
+    iss: sa.client_email,
+    scope: 'https://www.googleapis.com/auth/firebase.messaging',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600,
+  };
+  const enc = v => btoa(JSON.stringify(v)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  const sigInput = `${enc(header)}.${enc(claim)}`;
+
+  // PEM private key → CryptoKey
+  const pem = sa.private_key.replace(/-----[^-]+-----/g,'').replace(/\s/g,'');
+  const der = Uint8Array.from(atob(pem), c => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey(
+    'pkcs8', der.buffer,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false, ['sign']
+  );
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(sigInput));
+  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  const jwt = `${sigInput}.${sigB64}`;
+
+  // 토큰 교환
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`,
+  });
+  if (!res.ok) throw new Error(`토큰 발급 실패 ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  return data.access_token;
+}
+
+/** FCM v1 API로 단일 구독자에게 푸시 발송 */
+async function sendFcmV1Push(subscription, payload, env) {
+  const sa = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT);
+  const token = await getFcmAccessToken(env);
+
+  // Web Push subscription → FCM v1 메시지 형식
+  const sub = typeof subscription === 'string' ? JSON.parse(subscription) : subscription;
+  const msg = {
+    message: {
+      web_push: {
+        notification: {
+          title: payload.title || '📈 추세추종 매매 트래커',
+          body:  payload.body  || '새 알림이 있어요.',
+          icon:  'https://wlsdn816-eng.github.io/trend-tracker/icon-192.png',
+        },
+        fcm_options: {
+          link: payload.url || 'https://wlsdn816-eng.github.io/trend-tracker/',
+        },
+        headers: { TTL: '86400' },
+      },
+      token: sub.fcmToken || sub._fcmToken,
+    },
+  };
+
+  // fcmToken이 없으면 endpoint에서 추출 시도
+  if (!msg.message.token) {
+    const ep = sub.endpoint || '';
+    const m = ep.match(/fcm\/send\/(.+)$/);
+    if (m) msg.message.token = m[1];
+    else throw new Error('FCM 토큰을 찾을 수 없습니다');
+  }
+
+  const res = await fetch(
+    `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify(msg),
+    }
+  );
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`FCM v1 실패 ${res.status}: ${txt}`);
+  }
+  return res.status;
+}
+
 /** 단일 구독자에게 Web Push 발송 (RFC 8291 암호화 적용) */
 async function sendWebPush(subscription, payload, env) {
+  const sub = typeof subscription === 'string' ? JSON.parse(subscription) : subscription;
+
+  // FCM endpoint인 경우 → FCM v1 API 사용
+  const ep = sub.endpoint || '';
+  if (ep.includes('fcm.googleapis.com') || ep.includes('firebase.com')) {
+    if (env.FIREBASE_SERVICE_ACCOUNT) {
+      return await sendFcmV1Push(sub, payload, env);
+    }
+  }
+
+  // 그 외 (Chrome non-FCM, Firefox, Safari 등) → VAPID Web Push
   if (!env.VAPID_PRIVATE_KEY || !env.VAPID_PUBLIC_KEY) {
     throw new Error('VAPID 키가 설정되지 않았습니다');
   }
-  const sub = typeof subscription === 'string' ? JSON.parse(subscription) : subscription;
   const jwt = await makeVapidJwt(sub.endpoint, env.VAPID_PRIVATE_KEY, 'mailto:wlsdn816@gmail.com');
   const authHeader = `vapid t=${jwt},k=${env.VAPID_PUBLIC_KEY}`;
 
