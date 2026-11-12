@@ -2,14 +2,33 @@ name: 매일 자동 스크리너 알림
 
 on:
   schedule:
-    # 매일 평일 오후 4시 10분 KST = UTC 07:10 (정각은 GitHub 혼잡 → 지연/스킵 방지)
-    - cron: '10 7 * * 1-5'
+    # GitHub 예약 실행은 55~70분씩 늦게 시작됨 (실측).
+    # → 평일 오후 2시 37분 KST(UTC 05:37)에 일찍 예약하고, 아래 대기 단계에서 정확히 오후 4시까지 기다림
+    - cron: '37 5 * * 1-5'
   workflow_dispatch:  # 수동 실행 버튼 (trigger)
+
+concurrency:
+  group: daily-scan
+  cancel-in-progress: false
 
 jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
+      - name: 오후 4시(KST)까지 대기
+        if: github.event_name == 'schedule'
+        run: |
+          TARGET=$(date -u -d "today 07:00" +%s)   # UTC 07:00 = KST 16:00
+          NOW=$(date -u +%s)
+          WAIT=$((TARGET - NOW))
+          if [ "$WAIT" -gt 0 ]; then
+            echo "오후 4시까지 ${WAIT}초 대기"
+            sleep "$WAIT"
+          else
+            echo "이미 오후 4시가 지나 바로 시작 (${WAIT}초)"
+          fi
+
+
       - name: 스크리너 청크 분할 실행 및 카카오톡 알림
         run: |
           WORKER="https://kis-proxy.wlsdn816.workers.dev"
