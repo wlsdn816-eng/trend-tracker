@@ -2,10 +2,15 @@ name = "kis-proxy"
 main = "worker.js"
 compatibility_date = "2024-01-01"
 
+# Cron Trigger — 매일 오후 4시 KST (UTC 07:00)
+# 보유 포지션 종가 스냅샷 저장용.
+# ※ 반드시 여기에 명시해야 한다. 빠뜨리면 배포할 때 대시보드에 설정된
+#   Cron Trigger가 지워진다.
+[triggers]
+crons = ["0 7 * * *"]
+
+# KV 네임스페이스 — 코드에서는 env.KV 하나만 사용한다.
+# id는 Cloudflare 대시보드 → Storage & Databases → KV 에서 확인.
 [[kv_namespaces]]
 binding = "KV"
 id = "YOUR_KV_NAMESPACE_ID"
-
-[[kv_namespaces]]
-binding = "TREND_TRACKER_KV"
-id = "YOUR_TREND_TRACKER_KV_ID"
