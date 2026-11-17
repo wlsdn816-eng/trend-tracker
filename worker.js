@@ -2258,12 +2258,20 @@ export default {
         const email = info.email;
         const userId = info.sub; // 구글 고유 ID
 
-        // 허용 이메일 목록 (KV에서 가져오거나 환경변수 사용)
-        const allowedRaw = env.ALLOWED_EMAILS || await env.KV.get('allowed_emails') || '';
-        const allowed = allowedRaw.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+        // 허용 이메일 목록 — 환경변수와 KV를 "합쳐서" 본다.
+        // 예전에는 env.ALLOWED_EMAILS가 있으면 KV를 아예 무시해서,
+        // 대시보드 KV에 이메일을 추가해도 반영되지 않았다.
+        const envRaw = env.ALLOWED_EMAILS || '';
+        const kvRaw  = (await env.KV.get('allowed_emails')) || '';
+        const allowed = [...new Set(
+          [...envRaw.split(','), ...kvRaw.split(',')]
+            .map(e => e.trim().toLowerCase())
+            .filter(Boolean)
+        )];
 
         if (allowed.length > 0 && !allowed.includes(email.toLowerCase())) {
-          return corsResponse({ error: '접근 권한 없음', email }, 403);
+          // allowedCount만 노출 — 다른 사람의 이메일은 응답에 담지 않는다.
+          return corsResponse({ error: '접근 권한 없음', email, allowedCount: allowed.length }, 403);
         }
 
         return corsResponse({ ok: true, email, userId, name: info.name, picture: info.picture });
