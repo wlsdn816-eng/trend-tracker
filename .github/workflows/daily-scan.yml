@@ -132,7 +132,11 @@ jobs:
         if: steps.weekday.outputs.weekend != 'true' && steps.holiday.outputs.closed != 'true' && (github.event_name != 'schedule' || (steps.check.outputs.skip != 'true' && steps.recheck.outputs.skip != 'true'))
         run: |
           WORKER="https://kis-proxy.wlsdn816.workers.dev"
-          CHUNK_SIZE=30
+          # Cloudflare Worker는 요청 하나당 외부 호출 50번이 한도다.
+          # 종목당 2회(일봉+주봉)를 쓰므로 22종목 = 44회.
+          # 남는 6회는 토큰 발급·마스터파일 로드 같은 부대 호출 몫.
+          # 30종목(=60회)으로 두면 뒤 5종목이 매번 한도에 걸려 통째로 날아갔다.
+          CHUNK_SIZE=22
           OFFSET=0
           SCANNED_AT=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
           KOSPI_RS3M=0
