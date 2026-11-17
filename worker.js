@@ -126,8 +126,19 @@ async function encryptWebPush(subscription, plaintext) {
     concat(str('WebPush: info\x00'), p256dh, senderPubRaw), 32);
 
   // 7) CEK(16바이트)와 Nonce(12바이트) 도출
-  const cek   = await hkdf(prk, salt, str('Content-Encryption-Key\x00\x01'), 16);
-  const nonce = await hkdf(prk, salt, str('Nonce\x00\x01'), 12);
+  //
+  // info 문자열은 RFC 8188 §2.2에 고정돼 있다.
+  //   CEK   : "Content-Encoding: aes128gcm" || 0x00
+  //   Nonce : "Content-Encoding: nonce"     || 0x00
+  //
+  // 예전에는 'Content-Encryption-Key\x00\x01' / 'Nonce\x00\x01'을 썼는데
+  // 이는 구버전 aesgcm 방식의 문자열이라 브라우저가 복호화에 실패하고
+  // 푸시를 조용히 버린다(=알림이 안 뜬다). 중계 서버는 본문을 열어보지
+  // 않으므로 전송은 201로 성공한 것처럼 보여서 원인을 찾기 어렵다.
+  //
+  // 끝의 \x01도 빼야 한다. HKDF-Expand가 카운터 바이트를 알아서 붙인다.
+  const cek   = await hkdf(prk, salt, str('Content-Encoding: aes128gcm\x00'), 16);
+  const nonce = await hkdf(prk, salt, str('Content-Encoding: nonce\x00'), 12);
 
   // 8) AES-128-GCM 암호화 (패딩: 평문 끝에 \x02 추가)
   const pt = concat(new TextEncoder().encode(
