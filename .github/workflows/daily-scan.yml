@@ -2,9 +2,19 @@ name: 매일 자동 스크리너 알림
 
 on:
   schedule:
-    # GitHub 예약 실행은 55~70분씩 늦게 시작됨 (실측).
-    # → 평일 오후 2시 37분 KST(UTC 05:37)에 일찍 예약하고, 아래 대기 단계에서 정확히 오후 4시까지 기다림
-    - cron: '37 5 * * 1-5'
+    # GitHub는 예약 실행을 55~90분 늦게 시작하거나, 아예 건너뛰는 날이 있음 (실측).
+    # → 오후 4시 훨씬 전부터 20분 간격으로 여러 번 예약을 걸어 두고,
+    #    가장 먼저 올라탄 실행이 오후 4시 정각까지 기다렸다가 스캔한다.
+    #    (이미 그날 스캔이 끝났으면 뒤따라온 실행은 스스로 종료)
+    - cron: '0 4 * * 1-5'    # KST 13:00
+    - cron: '20 4 * * 1-5'   # KST 13:20
+    - cron: '40 4 * * 1-5'   # KST 13:40
+    - cron: '0 5 * * 1-5'    # KST 14:00
+    - cron: '20 5 * * 1-5'   # KST 14:20
+    - cron: '40 5 * * 1-5'   # KST 14:40
+    - cron: '0 6 * * 1-5'    # KST 15:00
+    - cron: '20 6 * * 1-5'   # KST 15:20
+    - cron: '40 6 * * 1-5'   # KST 15:40
   workflow_dispatch:  # 수동 실행 버튼 (trigger)
 
 concurrency:
@@ -15,8 +25,30 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - name: 오후 4시(KST)까지 대기
+      - name: 오늘 이미 스캔했는지 확인
+        id: check
         if: github.event_name == 'schedule'
+        run: |
+          WORKER="https://kis-proxy.wlsdn816.workers.dev"
+          TODAY=$(TZ=Asia/Seoul date +%Y-%m-%d)
+          # 저장된 scannedAt은 UTC 기준이므로 KST 날짜로 환산해서 비교
+          RAW=$(curl -s --max-time 20 "$WORKER/scan-result" \
+            | python3 -c "import sys,json;print(json.load(sys.stdin).get('scannedAt',''))" 2>/dev/null || echo "")
+          if [ -n "$RAW" ]; then
+            LAST_KST=$(TZ=Asia/Seoul date -d "$RAW" +%Y-%m-%d 2>/dev/null || echo "")
+          else
+            LAST_KST=""
+          fi
+          echo "오늘(KST)=$TODAY, 마지막 스캔(KST)=$LAST_KST"
+          if [ "$LAST_KST" = "$TODAY" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "오늘 스캔이 이미 완료됨 → 이 실행은 종료"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 오후 4시(KST)까지 대기
+        if: github.event_name == 'schedule' && steps.check.outputs.skip != 'true'
         run: |
           TARGET=$(date -u -d "today 07:00" +%s)   # UTC 07:00 = KST 16:00
           NOW=$(date -u +%s)
@@ -28,8 +60,28 @@ jobs:
             echo "이미 오후 4시가 지나 바로 시작 (${WAIT}초)"
           fi
 
+      - name: 대기 후 재확인 (다른 실행이 먼저 끝냈는지)
+        id: recheck
+        if: github.event_name == 'schedule' && steps.check.outputs.skip != 'true'
+        run: |
+          WORKER="https://kis-proxy.wlsdn816.workers.dev"
+          TODAY=$(TZ=Asia/Seoul date +%Y-%m-%d)
+          RAW=$(curl -s --max-time 20 "$WORKER/scan-result" | python3 -c "import sys,json;print(json.load(sys.stdin).get('scannedAt',''))" 2>/dev/null || echo "")
+          if [ -n "$RAW" ]; then
+            LAST_KST=$(TZ=Asia/Seoul date -d "$RAW" +%Y-%m-%d 2>/dev/null || echo "")
+          else
+            LAST_KST=""
+          fi
+          echo "오늘(KST)=$TODAY, 마지막 스캔(KST)=$LAST_KST"
+          if [ "$LAST_KST" = "$TODAY" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "다른 실행이 이미 완료함 → 종료"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: 스크리너 청크 분할 실행 및 카카오톡 알림
+        if: github.event_name != 'schedule' || (steps.check.outputs.skip != 'true' && steps.recheck.outputs.skip != 'true')
         run: |
           WORKER="https://kis-proxy.wlsdn816.workers.dev"
           CHUNK_SIZE=30
