@@ -667,9 +667,18 @@ async function getOHLCV(code, env) {
     fetch(period('W'), { headers: kisHeaders(token, 'FHKST03010100', env) }),
   ]);
 
-  if (!dailyRes.ok) throw new Error(`KIS OHLCV 실패: HTTP ${dailyRes.status}`);
+  // 실패를 두 종류로 나눈다.
+  //   RETRY — HTTP 단계 실패(호출 제한·일시 장애). 다시 부르면 될 수 있다.
+  //   SKIP  — KIS가 정상 응답하면서 "데이터 없음"이라 한 경우.
+  //           상장폐지·신규상장·거래정지 등이라 몇 번을 불러도 같다.
+  // 구분하지 않으면 재시도를 헛돌리고, 실패 집계도 원인을 알 수 없다.
+  if (!dailyRes.ok) {
+    const e = new Error(`HTTP ${dailyRes.status}`); e.kind = 'RETRY'; throw e;
+  }
   const dailyData = await dailyRes.json();
-  if (dailyData.rt_cd !== '0') throw new Error(dailyData.msg1 || 'OHLCV 조회 실패');
+  if (dailyData.rt_cd !== '0') {
+    const e = new Error(dailyData.msg1 || 'OHLCV 조회 실패'); e.kind = 'SKIP'; throw e;
+  }
 
   // output2가 일봉 배열 (최신순)
   const rows = (dailyData.output2 || []).map(r => ({
@@ -1961,18 +1970,21 @@ export default {
         const BATCH = 5;
         const GAP   = 500;
 
+        let skipped = 0;   // 데이터 자체가 없는 종목 (재시도 무의미)
+
         const runPass = async (list, gap) => {
-          const failedItems = [];
+          const retryItems = [];
           for (let i = 0; i < list.length; i += BATCH) {
             const mini = list.slice(i, i + BATCH);
             const results = await Promise.allSettled(mini.map(scanOne));
             results.forEach((r, idx) => {
-              if (r.status === 'rejected') failedItems.push(mini[idx]);
-              else collect(r);
+              if (r.status !== 'rejected') { collect(r); return; }
+              if (r.reason?.kind === 'SKIP') skipped++;      // 다시 불러도 같다
+              else retryItems.push(mini[idx]);               // 호출 제한 등 — 재시도
             });
             if (i + BATCH < list.length) await new Promise(res => setTimeout(res, gap));
           }
-          return failedItems;
+          return retryItems;
         };
 
         // 1차 → 실패분 2차 → 그래도 실패하면 3차. 간격을 점점 넓힌다.
@@ -1983,13 +1995,13 @@ export default {
           await new Promise(res => setTimeout(res, gap));
           pending = await runPass(pending, gap);
         }
-        const failed = pending.length;
+        const failed = pending.length;   // 재시도까지 하고도 못 받은 종목
 
         const nextOffset = offset + chunkSize;
         const done = nextOffset >= total;
 
         // KV 쓰기 없이 결과를 응답으로만 반환
-        return corsResponse({ ok: true, done, nextOffset: done ? null : nextOffset, total, kospiRs3m, scannedAt, chunkResults, chunkRs, failed });
+        return corsResponse({ ok: true, done, nextOffset: done ? null : nextOffset, total, kospiRs3m, scannedAt, chunkResults, chunkRs, failed, skipped });
       }
 
       // GET /token
