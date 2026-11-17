@@ -646,22 +646,23 @@ async function getOHLCV(code, env) {
   const token = await getToken(env);
   const today = new Date().toISOString().slice(0,10).replace(/-/g,'');
 
-  // 일봉 + 월봉을 병렬로 조회
-  const [dailyRes, monthlyRes] = await Promise.all([
-    fetch(
-      `${KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-daily-price`
-      + `?FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD=${code}`
-      + `&FID_PERIOD_DIV_CODE=D&FID_ORG_ADJ_PRC=0`
-      + `&FID_INPUT_DATE_1=20240101&FID_INPUT_DATE_2=${today}`,
-      { headers: kisHeaders(token, 'FHKST03010100', env) }
-    ),
-    fetch(
-      `${KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-daily-price`
-      + `?FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD=${code}`
-      + `&FID_PERIOD_DIV_CODE=M&FID_ORG_ADJ_PRC=0`
-      + `&FID_INPUT_DATE_1=20240101&FID_INPUT_DATE_2=${today}`,
-      { headers: kisHeaders(token, 'FHKST03010100', env) }
-    ),
+  // 일봉 + 주봉 + 월봉을 병렬로 조회
+  //
+  // 주봉이 필요한 이유: 이 API는 일봉을 100개까지만 준다.
+  // 그래서 150일선·200일선을 일봉으로 만들면 둘 다 "있는 데이터 전부의 평균"이
+  // 되어 값이 같아지고, 150일선 > 200일선 조건이 영원히 거짓이 된다.
+  // 52주 고점·저점도 실제로는 100일 범위가 된다.
+  // → 장기 지표는 주봉에서 뽑는다 (100주 ≈ 2년치).
+  const period = (div) =>
+    `${KIS_BASE}/uapi/domestic-stock/v1/quotations/inquire-daily-price`
+    + `?FID_COND_MRKT_DIV_CODE=J&FID_INPUT_ISCD=${code}`
+    + `&FID_PERIOD_DIV_CODE=${div}&FID_ORG_ADJ_PRC=0`
+    + `&FID_INPUT_DATE_1=20200101&FID_INPUT_DATE_2=${today}`;
+
+  const [dailyRes, weeklyRes, monthlyRes] = await Promise.all([
+    fetch(period('D'), { headers: kisHeaders(token, 'FHKST03010100', env) }),
+    fetch(period('W'), { headers: kisHeaders(token, 'FHKST03010100', env) }),
+    fetch(period('M'), { headers: kisHeaders(token, 'FHKST03010100', env) }),
   ]);
 
   if (!dailyRes.ok) throw new Error(`KIS OHLCV 실패: HTTP ${dailyRes.status}`);
@@ -705,23 +706,54 @@ async function getOHLCV(code, env) {
   }
   const atr = atrCount > 0 ? Math.round(atrSum / atrCount) : 0;
 
-  // 52주 고가·저가
-  const win52  = Math.min(250, highs.length);
-  const high52 = highs.length > 0 ? Math.max(...highs.slice(0, win52)) : 0;
-  const low52  = lows.length  > 0 ? Math.min(...lows.slice(0, win52))  : 0;
-
-  // 이동평균선 (미너비니 추세 템플릿용).
-  // rows는 최신순이므로 slice(from, from+n)이 곧 "from일 전부터 n일간".
-  const sma = (from, n) => {
-    const seg = closes.slice(from, from + n);
-    if (seg.length < Math.min(n, 30)) return 0;   // 데이터가 턱없이 모자라면 0 (판정 제외)
+  // 이동평균 헬퍼 — 배열은 최신순이므로 slice(from, from+n)이 "from칸 전부터 n칸".
+  // 요구 길이의 90%는 있어야 유효한 값으로 본다. 모자라면 0을 돌려
+  // 상장 초기 종목이 엉뚱한 평균으로 관문을 통과하지 않게 한다.
+  const smaOf = (arr, from, n) => {
+    const seg = arr.slice(from, from + n);
+    if (seg.length < n * 0.9) return 0;
     return seg.reduce((a, b) => a + b, 0) / seg.length;
   };
-  const ma50  = sma(0, 50);
-  const ma150 = sma(0, 150);
-  const ma200 = sma(0, 200);
-  // 200일선 추세 판정용 — 한 달(20거래일) 전 시점의 200일선
-  const ma200Prev = sma(20, 200);
+
+  // 50일선은 일봉 100개 안에 들어오므로 일봉으로 계산
+  const ma50 = smaOf(closes, 0, 50);
+
+  // ── 주봉 기반 장기 지표 ──
+  let ma150 = 0, ma200 = 0, ma200Prev = 0, high52 = 0, low52 = 0;
+  try {
+    if (weeklyRes.ok) {
+      const wData = await weeklyRes.json();
+      if (wData.rt_cd === '0') {
+        const wRows = (wData.output2 || [])
+          .map(r => ({
+            close: parseInt(r.stck_clpr) || 0,
+            high:  parseInt(r.stck_hgpr) || 0,
+            low:   parseInt(r.stck_lwpr) || 0,
+          }))
+          .filter(r => r.close > 0);
+
+        const wCloses = wRows.map(r => r.close);
+        // 1주 ≈ 5거래일 → 150일선 ≈ 30주선, 200일선 ≈ 40주선
+        ma150 = smaOf(wCloses, 0, 30);
+        ma200 = smaOf(wCloses, 0, 40);
+        // 200일선 추세 판정용 — 약 한 달(4주) 전 시점
+        ma200Prev = smaOf(wCloses, 4, 40);
+
+        // 진짜 52주 고가·저가 (주봉 52개)
+        const w52 = wRows.slice(0, 52);
+        if (w52.length >= 30) {
+          high52 = Math.max(...w52.map(r => r.high));
+          low52  = Math.min(...w52.map(r => r.low));
+        }
+      }
+    }
+  } catch(e) {
+    console.warn(`[주봉] ${code} 처리 실패:`, e.message);
+  }
+
+  // 주봉을 못 받았을 때의 차선책 — 일봉 범위로라도 52주 고저를 채운다
+  if (high52 === 0 && highs.length > 0) high52 = Math.max(...highs);
+  if (low52  === 0 && lows.length  > 0) low52  = Math.min(...lows);
 
   // RS (상대강도): 최근 3개월(약 63거래일) 수익률
   const close63ago = closes[Math.min(62, closes.length - 1)] || curr;
