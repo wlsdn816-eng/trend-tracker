@@ -978,16 +978,16 @@
               <input type="checkbox" id="cond-near52w" onchange="applyScreenerFilter()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
               <span style="font-size:12px;font-weight:600;">🏔️ 52주 고점 -10% 이내</span>
             </label>
+            <!-- 관문이 이미 RS 80 이상을 요구하므로, 여기서는 더 높은 기준으로 좁힌다 -->
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;background:var(--surface);border-radius:8px;border:1.5px solid var(--border);" id="lbl-cond-rs">
               <input type="checkbox" id="cond-rs" onchange="applyScreenerFilter()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
-              <span style="font-size:12px;font-weight:600;">💪 RS 레이팅 80+ (상위 20%)</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;background:var(--surface);border-radius:8px;border:1.5px solid var(--border);grid-column:1/-1;" id="lbl-cond-ma10m">
-              <input type="checkbox" id="cond-ma10m" onchange="applyScreenerFilter()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
-              <span style="font-size:12px;font-weight:600;">📅 월봉 10선 위 (현재가 > 10개월 이동평균)</span>
+              <span style="font-size:12px;font-weight:600;">💪 RS 레이팅 90+ (상위 10%)</span>
             </label>
           </div>
-          <div style="font-size:11px;color:var(--fg3);margin-top:8px;" id="scan-filter-desc">체크된 조건을 모두 충족하는 종목만 표시</div>
+          <div style="font-size:11px;color:var(--fg3);margin-top:8px;line-height:1.5;" id="scan-filter-desc">체크된 조건을 모두 충족하는 종목만 표시</div>
+          <div style="font-size:11px;color:var(--fg3);margin-top:6px;line-height:1.5;">
+            ※ 아래 목록은 이미 <b>추세 관문</b>(정배열 · 200일선 상승 · 52주 저점 +30% · 52주 고점 −25% 이내 · RS 80+)을 통과한 종목입니다.
+          </div>
         </div>
         <div id="scan-meta" style="font-size:12px;color:var(--fg2);margin-bottom:12px;"></div>
         <div id="scan-list"></div>
@@ -3863,9 +3863,8 @@ function applyScreenerFilter() {
   const useHigh20  = document.getElementById('cond-high20')?.checked  ?? true;
   const useVol     = document.getElementById('cond-vol')?.checked     ?? false;
   const useNear52w = document.getElementById('cond-near52w')?.checked ?? false;
-  const useRs      = document.getElementById('cond-rs')?.checked      ?? false;
-  const useMa10m   = document.getElementById('cond-ma10m')?.checked   ?? false;
-  const anyChecked = useHigh20 || useVol || useNear52w || useRs || useMa10m;
+  const useRs90    = document.getElementById('cond-rs')?.checked      ?? false;
+  const anyChecked = useHigh20 || useVol || useNear52w || useRs90;
 
   const filtered = _scanAllResults.filter(r => {
     if (!anyChecked) return true;
@@ -3873,8 +3872,8 @@ function applyScreenerFilter() {
     if (useHigh20  && !f.high20)  return false;
     if (useVol     && !f.vol)     return false;
     if (useNear52w && !f.near52w) return false;
-    if (useRs      && !f.rs)      return false;
-    if (useMa10m   && !f.ma10m)   return false;
+    // 관문이 RS 80을 이미 걸렀으므로 여기서는 90 이상으로 더 좁힌다
+    if (useRs90    && (r.rsRating ?? 0) < 90) return false;
     return true;
   });
 
@@ -3884,7 +3883,7 @@ function applyScreenerFilter() {
     : `전체 신호 종목 표시 · ${filtered.length}개`;
 
   // 체크박스 라벨 active 스타일
-  ['high20','vol','near52w','rs','ma10m'].forEach(k => {
+  ['high20','vol','near52w','rs'].forEach(k => {
     const lbl = document.getElementById(`lbl-cond-${k}`);
     const chk = document.getElementById(`cond-${k}`);
     if (lbl && chk) {
