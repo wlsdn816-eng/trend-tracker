@@ -252,15 +252,16 @@ async function sendFcmV1Push(subscription, payload, env) {
 async function sendWebPush(subscription, payload, env) {
   const sub = typeof subscription === 'string' ? JSON.parse(subscription) : subscription;
 
-  // FCM endpoint인 경우 → FCM v1 API 사용
-  const ep = sub.endpoint || '';
-  if (ep.includes('fcm.googleapis.com') || ep.includes('firebase.com')) {
-    if (env.FIREBASE_SERVICE_ACCOUNT) {
-      return await sendFcmV1Push(sub, payload, env);
-    }
-  }
-
-  // 그 외 (Chrome non-FCM, Firefox, Safari 등) → VAPID Web Push
+  // 모든 브라우저(Chrome/FCM, Edge/WNS, Firefox, Safari)를 VAPID Web Push로 처리한다.
+  //
+  // 한때 FCM 주소는 FCM v1 API로 따로 보냈는데, 이는 잘못이었다.
+  // 구독 주소 .../fcm/send/<ID>의 <ID>는 Web Push 구독 식별자이지
+  // FCM v1이 요구하는 등록 토큰(Firebase SDK getToken()으로 받는 값)이 아니다.
+  // 그대로 token에 넣으면 FCM이 404 NotRegistered로 거절한다.
+  //
+  // 2024년에 종료된 것은 서버키(Authorization: key=...) 방식이고,
+  // VAPID 기반 Web Push는 FCM 주소에서도 그대로 동작한다.
+  // → Firebase 서비스 계정 없이 표준 방식 하나로 통일.
   if (!env.VAPID_PRIVATE_KEY || !env.VAPID_PUBLIC_KEY) {
     throw new Error('VAPID 키가 설정되지 않았습니다');
   }
