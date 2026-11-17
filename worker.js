@@ -1212,9 +1212,27 @@ async function loadMasterDB(env) {
 
   // 코스피/코스닥 중 한쪽만 로드되면 종목 목록이 통째로 달라져서
   // 청크 오프셋이 어긋난다 → 같은 종목이 두 번 스캔되거나 일부가 누락됨.
-  // 하나라도 실패하면 기존 masterDB를 그대로 유지한다.
+  // 그래서 반쪽짜리 목록은 절대 채택하지 않는다.
   if (failed > 0) {
-    console.error(`[마스터DB] ${failed}개 시장 로드 실패 — 기존 목록 유지 (현재 ${masterDB.length}개)`);
+    // 이미 목록을 들고 있으면 그대로 쓴다
+    if (masterDB.length > 0) {
+      console.error(`[마스터DB] ${failed}개 시장 로드 실패 — 기존 목록 유지 (${masterDB.length}개)`);
+      return;
+    }
+    // 목록이 없는 새 인스턴스라면 KV 캐시에서 되살린다.
+    // 캐시는 직전에 양쪽 다 성공했을 때 저장된 완전한 목록이라 안전하다.
+    try {
+      const cached = env && env.KV ? await env.KV.get('master_db_cache') : null;
+      if (cached) {
+        masterDB = JSON.parse(cached);
+        masterLoadedAt = now;
+        console.error(`[마스터DB] ${failed}개 시장 로드 실패 — KV 캐시로 복원 (${masterDB.length}개)`);
+        return;
+      }
+    } catch (e) {
+      console.error('[마스터DB] KV 캐시 복원 실패:', e.message);
+    }
+    console.error(`[마스터DB] ${failed}개 시장 로드 실패 — 복원할 캐시도 없음`);
     return;
   }
 
@@ -1937,30 +1955,35 @@ export default {
           if (!r.value._rsOnly) chunkResults.push(r.value);
         };
 
-        // 1차 스캔 — 실패한 종목은 따로 모은다
-        const retryQueue = [];
-        for (let i = 0; i < chunk.length; i += 5) {
-          const mini = chunk.slice(i, i + 5);
-          const results = await Promise.allSettled(mini.map(scanOne));
-          results.forEach((r, idx) => {
-            if (r.status === 'rejected') retryQueue.push(mini[idx]);
-            else collect(r);
-          });
-          if (i + 5 < chunk.length) await new Promise(res => setTimeout(res, 200));
-        }
+        // KIS 호출 제한은 대략 초당 20건. 종목당 2호출이므로
+        // 5종목(=10건)을 보내고 500ms 쉬면 초당 20건에 맞는다.
+        // 예전에는 200ms라 초당 50건을 쏴서 20% 가까이 거절당했다.
+        const BATCH = 5;
+        const GAP   = 500;
 
-        // 2차 — 조회에 실패한 종목만 한 번 더. KIS 호출 제한에 걸린 건들이라
-        // 간격을 넓혀 재시도한다. 이게 없으면 종목이 조용히 누락된다.
-        let failed = 0;
-        for (let i = 0; i < retryQueue.length; i += 3) {
-          await new Promise(res => setTimeout(res, 400));
-          const mini = retryQueue.slice(i, i + 3);
-          const results = await Promise.allSettled(mini.map(scanOne));
-          results.forEach(r => {
-            if (r.status === 'rejected') failed++;
-            else collect(r);
-          });
+        const runPass = async (list, gap) => {
+          const failedItems = [];
+          for (let i = 0; i < list.length; i += BATCH) {
+            const mini = list.slice(i, i + BATCH);
+            const results = await Promise.allSettled(mini.map(scanOne));
+            results.forEach((r, idx) => {
+              if (r.status === 'rejected') failedItems.push(mini[idx]);
+              else collect(r);
+            });
+            if (i + BATCH < list.length) await new Promise(res => setTimeout(res, gap));
+          }
+          return failedItems;
+        };
+
+        // 1차 → 실패분 2차 → 그래도 실패하면 3차. 간격을 점점 넓힌다.
+        // 조용한 누락은 스크리너에서 가장 위험한 실패 방식이라 끝까지 건진다.
+        let pending = await runPass(chunk, GAP);
+        for (const gap of [900, 1500]) {
+          if (pending.length === 0) break;
+          await new Promise(res => setTimeout(res, gap));
+          pending = await runPass(pending, gap);
         }
+        const failed = pending.length;
 
         const nextOffset = offset + chunkSize;
         const done = nextOffset >= total;
