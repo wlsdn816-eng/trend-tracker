@@ -13,4 +13,4 @@ crons = ["0 7 * * *"]
 # id는 Cloudflare 대시보드 → Storage & Databases → KV 에서 확인.
 [[kv_namespaces]]
 binding = "KV"
-id = "YOUR_KV_NAMESPACE_ID"
+id = "86157d65d3014473858e0f6726a3b5d9"
