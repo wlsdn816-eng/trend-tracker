@@ -25,9 +25,22 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
+      - name: 주말이면 중단 (KST 기준)
+        id: weekday
+        run: |
+          DOW=$(TZ=Asia/Seoul date +%u)   # 1=월 … 6=토, 7=일
+          DAY=$(TZ=Asia/Seoul date '+%Y-%m-%d (%a)')
+          if [ "$DOW" -ge 6 ]; then
+            echo "weekend=true" >> "$GITHUB_OUTPUT"
+            echo "$DAY — 주말이므로 스캔하지 않음"
+          else
+            echo "weekend=false" >> "$GITHUB_OUTPUT"
+            echo "$DAY — 평일, 스캔 진행"
+          fi
+
       - name: 오늘 이미 스캔했는지 확인
         id: check
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' && steps.weekday.outputs.weekend != 'true'
         run: |
           WORKER="https://kis-proxy.wlsdn816.workers.dev"
           TODAY=$(TZ=Asia/Seoul date +%Y-%m-%d)
@@ -48,7 +61,7 @@ jobs:
           fi
 
       - name: 오후 4시(KST)까지 대기
-        if: github.event_name == 'schedule' && steps.check.outputs.skip != 'true'
+        if: github.event_name == 'schedule' && steps.weekday.outputs.weekend != 'true' && steps.check.outputs.skip != 'true'
         run: |
           TARGET=$(date -u -d "today 07:00" +%s)   # UTC 07:00 = KST 16:00
           NOW=$(date -u +%s)
@@ -62,7 +75,7 @@ jobs:
 
       - name: 대기 후 재확인 (다른 실행이 먼저 끝냈는지)
         id: recheck
-        if: github.event_name == 'schedule' && steps.check.outputs.skip != 'true'
+        if: github.event_name == 'schedule' && steps.weekday.outputs.weekend != 'true' && steps.check.outputs.skip != 'true'
         run: |
           WORKER="https://kis-proxy.wlsdn816.workers.dev"
           TODAY=$(TZ=Asia/Seoul date +%Y-%m-%d)
@@ -81,7 +94,7 @@ jobs:
           fi
 
       - name: 스크리너 청크 분할 실행 및 카카오톡 알림
-        if: github.event_name != 'schedule' || (steps.check.outputs.skip != 'true' && steps.recheck.outputs.skip != 'true')
+        if: steps.weekday.outputs.weekend != 'true' && (github.event_name != 'schedule' || (steps.check.outputs.skip != 'true' && steps.recheck.outputs.skip != 'true'))
         run: |
           WORKER="https://kis-proxy.wlsdn816.workers.dev"
           CHUNK_SIZE=30
