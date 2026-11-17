@@ -949,6 +949,19 @@
             <button class="btn btn-ghost" style="font-size:12px;padding:6px 10px;" onclick="loadScanResult()">새로고침</button>
           </div>
         </div>
+        <!-- 추세 관문 통과자를 '매수 후보 / 관찰'로 나눠 본다 -->
+        <div style="display:flex;gap:6px;margin-bottom:10px;">
+          <button id="scan-tab-basic" class="scan-tab" onclick="switchScanMode('basic')"
+                  style="flex:1;font-size:12px;font-weight:700;padding:9px 8px;border-radius:9px;border:1.5px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;">
+            🎯 매수 후보
+          </button>
+          <button id="scan-tab-watch" class="scan-tab" onclick="switchScanMode('watch')"
+                  style="flex:1;font-size:12px;font-weight:700;padding:9px 8px;border-radius:9px;border:1.5px solid var(--border);background:var(--surface);color:var(--fg2);cursor:pointer;">
+            👀 관찰 목록
+          </button>
+        </div>
+        <div id="scan-mode-desc" style="font-size:11px;color:var(--fg3);margin-bottom:10px;line-height:1.5;"></div>
+
         <!-- 조건 체크박스 필터 -->
         <div style="background:var(--surface2);border-radius:12px;padding:12px 14px;margin-bottom:10px;">
           <div style="font-size:12px;font-weight:700;color:var(--fg2);margin-bottom:10px;">🎛️ 스크리닝 조건 선택 (AND 조합)</div>
@@ -967,7 +980,7 @@
             </label>
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;background:var(--surface);border-radius:8px;border:1.5px solid var(--border);" id="lbl-cond-rs">
               <input type="checkbox" id="cond-rs" onchange="applyScreenerFilter()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
-              <span style="font-size:12px;font-weight:600;">💪 RS 강세 (코스피 초과)</span>
+              <span style="font-size:12px;font-weight:600;">💪 RS 레이팅 80+ (상위 20%)</span>
             </label>
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;background:var(--surface);border-radius:8px;border:1.5px solid var(--border);grid-column:1/-1;" id="lbl-cond-ma10m">
               <input type="checkbox" id="cond-ma10m" onchange="applyScreenerFilter()" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">
@@ -3792,13 +3805,36 @@ window.toggleManualCard = (i) => {
   renderScreener();
 }
 
+// 'basic' = 추세 관문 통과 + 방아쇠(신고가·거래량) 있음
+// 'watch'  = 추세 관문은 통과했는데 아직 방아쇠가 없음
+let _scanMode = 'basic';
+
+function switchScanMode(mode) {
+  _scanMode = mode;
+  ['basic','watch'].forEach(m => {
+    const btn = document.getElementById(`scan-tab-${m}`);
+    if (!btn) return;
+    const on = (m === mode);
+    btn.style.background  = on ? 'var(--accent)' : 'var(--surface)';
+    btn.style.color       = on ? '#fff' : 'var(--fg2)';
+    btn.style.borderColor = on ? 'var(--accent)' : 'var(--border)';
+  });
+  loadScanResult();
+}
+
 async function loadScanResult() {
   const meta = document.getElementById('scan-meta');
   const list = document.getElementById('scan-list');
+  const desc = document.getElementById('scan-mode-desc');
   meta.textContent = '불러오는 중...';
   list.innerHTML = '';
+  if (desc) {
+    desc.textContent = _scanMode === 'watch'
+      ? '추세는 살아있는데 아직 신고가·거래량이 터지지 않은 종목입니다. 방아쇠를 기다리는 자리예요.'
+      : '추세 관문(정배열 · 200일선 상승 · RS 상위 20%)을 통과하고 신고가나 거래량이 터진 종목입니다.';
+  }
   try {
-    const res = await fetch(`${KIS_WORKER}/scan-result?mode=basic`);
+    const res = await fetch(`${KIS_WORKER}/scan-result?mode=${_scanMode}`);
     const data = await res.json();
     if (data.error) {
       meta.textContent = '스캔 결과 없음. 평일 장 마감 후 자동 갱신됩니다.';
@@ -3806,9 +3842,17 @@ async function loadScanResult() {
     }
     const d = new Date(data.scannedAt);
     const kospiInfo = data.kospiRs3m != null ? ` · 코스피 3개월 ${data.kospiRs3m.toFixed(1)}%` : '';
-    meta.textContent = `📅 스캔: ${d.toLocaleDateString('ko-KR')} ${d.toLocaleTimeString('ko-KR', {hour:'2-digit',minute:'2-digit'})} · 전체 ${data.total.toLocaleString()}종목 중 ${data.hits}개 신호${kospiInfo}`;
+    const gateInfo  = data.gatePassed != null ? ` · 추세 통과 ${data.gatePassed}종목` : '';
+    meta.textContent = `📅 스캔: ${d.toLocaleDateString('ko-KR')} ${d.toLocaleTimeString('ko-KR', {hour:'2-digit',minute:'2-digit'})} · 전체 ${data.total.toLocaleString()}종목${gateInfo} · 이 목록 ${data.hits}개${kospiInfo}`;
     _scanAllResults = data.results || [];
     applyScreenerFilter();
+
+    // 하락장에는 통과 종목이 없는 게 정상 — 고장으로 오해하지 않도록 알려준다
+    if (_scanAllResults.length === 0 && (data.gatePassed ?? 0) === 0) {
+      list.innerHTML = `<div style="padding:18px;text-align:center;color:var(--fg3);font-size:12px;line-height:1.6;">
+        오늘은 추세 관문을 통과한 종목이 없습니다.<br>
+        시장 전반이 약할 때는 정상적인 결과예요. 쉬는 것도 자리입니다.</div>`;
+    }
   } catch(e) {
     meta.textContent = '오류: ' + e.message;
   }

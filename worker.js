@@ -705,8 +705,23 @@ async function getOHLCV(code, env) {
   }
   const atr = atrCount > 0 ? Math.round(atrSum / atrCount) : 0;
 
-  // 52주 고가
-  const high52 = highs.length > 0 ? Math.max(...highs.slice(0, Math.min(250, highs.length))) : 0;
+  // 52주 고가·저가
+  const win52  = Math.min(250, highs.length);
+  const high52 = highs.length > 0 ? Math.max(...highs.slice(0, win52)) : 0;
+  const low52  = lows.length  > 0 ? Math.min(...lows.slice(0, win52))  : 0;
+
+  // 이동평균선 (미너비니 추세 템플릿용).
+  // rows는 최신순이므로 slice(from, from+n)이 곧 "from일 전부터 n일간".
+  const sma = (from, n) => {
+    const seg = closes.slice(from, from + n);
+    if (seg.length < Math.min(n, 30)) return 0;   // 데이터가 턱없이 모자라면 0 (판정 제외)
+    return seg.reduce((a, b) => a + b, 0) / seg.length;
+  };
+  const ma50  = sma(0, 50);
+  const ma150 = sma(0, 150);
+  const ma200 = sma(0, 200);
+  // 200일선 추세 판정용 — 한 달(20거래일) 전 시점의 200일선
+  const ma200Prev = sma(20, 200);
 
   // RS (상대강도): 최근 3개월(약 63거래일) 수익률
   const close63ago = closes[Math.min(62, closes.length - 1)] || curr;
@@ -735,7 +750,8 @@ async function getOHLCV(code, env) {
   const haltedVol = vols.slice(0, 3).every(v => v === 0);
   const haltedPrice = rows.slice(0, 3).every(r => r.high === r.low && r.high === r.close && r.close > 0);
   const isHalted = haltedVol || haltedPrice;
-  return { code, curr, prevClose, high20, low10, avgVol, todayVol, atr, high52, rs3m, ma10m, rows, latestDate, isHalted };
+  return { code, curr, prevClose, high20, low10, avgVol, todayVol, atr, high52, low52,
+           ma50, ma150, ma200, ma200Prev, rs3m, ma10m, rows, latestDate, isHalted };
 }
 
 // ────────────────────────────────────────────────────────────
@@ -1233,73 +1249,114 @@ function searchStocks(q) {
 // 추세추종 신호 — 조건별 플래그 반환 (프론트에서 자유롭게 필터)
 // kospiRs3m: 코스피 3개월 수익률 (runFullScan에서 미리 계산해서 넘김)
 // ────────────────────────────────────────────────────────────
+// RS 레이팅 기준선 — 시장 상위 20%
+const RS_RATING_MIN = 80;
+
+/**
+ * 미너비니 추세 템플릿 — "지금 상승 추세인가"를 판정하는 관문.
+ * 여기를 통과하지 못하면 신고가가 터지든 거래량이 터지든 후보가 아니다.
+ * (RS 레이팅은 전 종목 백분위라 sendFinal 단계에서 따로 적용한다)
+ */
+function calcTrendTemplate(data) {
+  const { curr, ma50, ma150, ma200, ma200Prev, high52, low52 } = data;
+  const haveMa = curr > 0 && ma50 > 0 && ma150 > 0 && ma200 > 0;
+
+  // 1) 정배열: 현재가 > 50일선 > 150일선 > 200일선
+  const t_stack    = haveMa && curr > ma50 && ma50 > ma150 && ma150 > ma200;
+  // 2) 200일선이 한 달 전보다 위 — 장기 추세가 살아있는가
+  const t_ma200Up  = ma200 > 0 && ma200Prev > 0 && ma200 > ma200Prev;
+  // 3) 52주 저점 대비 +30% 이상 — 바닥에서 충분히 올라왔는가
+  const t_offLow   = low52 > 0 && curr >= low52 * 1.30;
+  // 4) 52주 고점 대비 -25% 이내 — 고점에서 크게 밀리지 않았는가
+  const t_nearHigh = high52 > 0 && curr >= high52 * 0.75;
+
+  const pass = t_stack && t_ma200Up && t_offLow && t_nearHigh;
+  return { pass, t_stack, t_ma200Up, t_offLow, t_nearHigh };
+}
+
 function calcSignalFlags(data, kospiRs3m = 0) {
+  // ── 방아쇠: 관문을 통과한 종목이 "지금 움직이는가" ──
   const flag_high20  = data.curr > 0 && data.high20 > 0 && data.curr >= data.high20 * 0.98; // 20일 신고가 2% 이내 근접 포함
   const flag_vol     = data.todayVol > 0 && data.avgVol > 0 && data.todayVol >= data.avgVol * 2.0;
+
+  // ── 참고 지표 ──
   const flag_near52w = data.high52 > 0 && data.curr >= data.high52 * 0.90; // -10% 이내
-  // RS: 청크 스캔 시 임시로 코스피 초과 조건 사용 (sendFinal에서 IBD RS 레이팅으로 재계산)
+  // 월봉 10선 "위에 있음". 예전에는 돌파 당일만 참이라
+  // 몇 달째 10선 위에서 잘 가는 건강한 추세주가 오히려 불리했다.
+  const flag_ma10m   = data.ma10m > 0 && data.curr > data.ma10m;
+  // RS: 청크 단계의 임시 판정 (sendFinal에서 전 종목 기준 RS 레이팅으로 교체)
   const flag_rs      = data.rs3m > 0 && data.rs3m > kospiRs3m;
-  // 월봉 10선 돌파: 오늘 처음 10개월 이동평균 위로 올라온 경우만
-  // (전일 종가 ≤ MA10M < 오늘 종가)
-  const flag_ma10m   = data.ma10m > 0 && data.curr > data.ma10m && data.prevClose <= data.ma10m;
+
+  const trend = calcTrendTemplate(data);
 
   const reasons = [];
   if (flag_high20)  reasons.push('20일 신고가 돌파');
   if (flag_vol)     reasons.push('거래량 2배');
   if (flag_near52w) reasons.push('52주 고점 -10% 이내');
-  if (flag_rs)      reasons.push(`RS 강세 (${data.rs3m.toFixed(1)}% vs 코스피 ${kospiRs3m.toFixed(1)}%)`);
   if (flag_ma10m)   reasons.push(`월봉 10선 위 (MA: ${data.ma10m.toLocaleString()})`);
 
-  // 하나라도 신호가 있으면 결과에 포함 (필터는 프론트에서)
-  const anySignal = flag_high20 || flag_vol || flag_near52w || flag_rs || flag_ma10m;
-  const score = [flag_high20, flag_vol, flag_near52w, flag_rs, flag_ma10m].filter(Boolean).length;
+  // 방아쇠 개수가 점수 (0~2). 정렬·표시에 쓴다.
+  const score = [flag_high20, flag_vol].filter(Boolean).length;
 
-  return { score, reasons, anySignal, flags: { high20: flag_high20, vol: flag_vol, near52w: flag_near52w, rs: flag_rs, ma10m: flag_ma10m } };
+  // 결과에 포함할지: 추세 관문을 통과한 종목만.
+  // 방아쇠가 아직 없어도 '관찰 목록'으로 쓰므로 포함한다.
+  const anySignal = trend.pass;
+
+  return {
+    score, reasons, anySignal,
+    trend,
+    flags: { high20: flag_high20, vol: flag_vol, near52w: flag_near52w, rs: flag_rs, ma10m: flag_ma10m },
+  };
 }
 
 // ────────────────────────────────────────────────────────────
-// IBD RS 레이팅 계산: allResults 전체의 rs3m 기준 백분위 (0~99)
-// RS 레이팅 90 = 전체 종목 중 상위 10%
+// IBD RS 레이팅: rs3m 백분위 (0~99). 레이팅 80 = 시장 상위 20%
+//
+// 모집단은 반드시 "스캔한 전 종목"이어야 한다. 예전에는 1차 통과
+// 종목들끼리만 순위를 매겨서, 이미 강한 종목들 사이의 상대 순위가
+// 나왔다. 그러면 '상위 20%'가 시장 기준 상위 20%를 뜻하지 않는다.
 // ────────────────────────────────────────────────────────────
-function calcRsRatings(allResults) {
-  // rs3m 값 정렬 (오름차순)
-  const rs3mValues = allResults.map(r => r.rs3m).sort((a, b) => a - b);
-  const n = rs3mValues.length;
+function calcRsRatings(results, marketRs3m) {
+  // marketRs3m: 스캔한 모든 종목의 rs3m 배열 (관문 탈락 종목 포함)
+  const pool = (Array.isArray(marketRs3m) && marketRs3m.length > 0)
+    ? marketRs3m
+    : results.map(r => r.rs3m);          // 전 종목 데이터가 없으면 차선책
+  const sorted = [...pool].sort((a, b) => a - b);
+  const n = sorted.length;
   if (n === 0) return;
 
-  allResults.forEach(r => {
-    // 자신보다 낮은 rs3m 종목 수 / 전체 = 하위 몇% → 상위 % = 100 - 하위%
-    const rank = rs3mValues.filter(v => v < r.rs3m).length;
-    r.rsRating = Math.min(99, Math.floor((rank / n) * 100));
+  // 이진 탐색으로 "자신보다 낮은 값의 개수" — 전 종목(수천 개) 기준이라
+  // 선형 탐색이면 O(결과수 × 전종목수)로 느려진다.
+  const countBelow = (v) => {
+    let lo = 0, hi = n;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (sorted[mid] < v) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+  };
+
+  results.forEach(r => {
+    r.rsRating = Math.min(99, Math.floor((countBelow(r.rs3m) / n) * 100));
   });
 }
 
 // ────────────────────────────────────────────────────────────
-// sendFinal에서 RS 조건 재적용: IBD RS 레이팅 90 이상으로 업데이트
+// sendFinal에서 RS 레이팅 적용 — 기준 미달은 후보에서 제외
 // ────────────────────────────────────────────────────────────
-function applyRsRatingCondition(allResults) {
-  calcRsRatings(allResults);
+function applyRsRatingCondition(allResults, marketRs3m) {
+  calcRsRatings(allResults, marketRs3m);
 
   allResults.forEach(r => {
-    const newFlagRs = (r.rsRating ?? 0) >= 90;
-    const oldFlagRs = r.flags?.rs ?? false;
-
-    if (newFlagRs === oldFlagRs) return; // 변화 없으면 패스
-
     r.flags = r.flags || {};
-    r.flags.rs = newFlagRs;
+    r.flags.rs = (r.rsRating ?? 0) >= RS_RATING_MIN;
 
-    // reasons 업데이트: 기존 RS 관련 항목 제거 후 새 항목 추가
-    r.reasons = (r.reasons || []).filter(s => !s.startsWith('RS 강세'));
-    if (newFlagRs) r.reasons.push(`RS 레이팅 ${r.rsRating} (상위 ${100 - r.rsRating}%)`);
-
-    // score 재계산
-    r.score = [r.flags.high20, r.flags.vol, r.flags.near52w, r.flags.rs, r.flags.ma10m].filter(Boolean).length;
+    r.reasons = (r.reasons || []).filter(s => !s.startsWith('RS 강세') && !s.startsWith('RS 레이팅'));
+    if (r.flags.rs) r.reasons.push(`RS 레이팅 ${r.rsRating} (상위 ${100 - r.rsRating}%)`);
   });
 
-  // score=0이 된 종목(다른 조건도 없는 경우)은 anySignal 없으므로 필터링
-  return allResults.filter(r => r.score >= 1 ||
-    r.flags?.high20 || r.flags?.vol || r.flags?.near52w || r.flags?.rs || r.flags?.ma10m);
+  // 추세 관문의 마지막 항목 = RS 레이팅. 미달이면 추세주로 보지 않는다.
+  return allResults.filter(r => r.flags.rs);
 }
 
 // ────────────────────────────────────────────────────────────
@@ -1382,32 +1439,40 @@ async function sendKakaoScanAlert(env, basic, strict) {
 
   const today = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'long', day: 'numeric' });
 
-  let msg = `📈 ${today} 자동선별 스캔 결과\n엄격 ${strict.hits}종목 / 기본 ${basic.hits}종목\n\n`;
+  const gate = basic.gatePassed ?? 0;
+  const watchCount = Math.max(0, gate - (basic.hits ?? 0));
 
-  if (strict.hits > 0) {
-    msg += `🎯 [엄격 ${strict.hits}종목]\n`;
-    strict.results.slice(0, 5).forEach(r => {
-      msg += `${r.name} (${r.code})\n`;
-      r.reasons.forEach(reason => { msg += ` ✅ ${reason}\n`; });
-      msg += ` 신호 점수: ${r.score}점\n\n`;
-    });
+  let msg = `📈 ${today} 자동선별 스캔 결과\n`
+          + `추세 관문 통과 ${gate}종목 → 매수 후보 ${basic.hits}종목 (엄격 ${strict.hits}) · 관찰 ${watchCount}종목\n\n`;
+
+  if (gate === 0) {
+    msg += `오늘은 추세 관문을 통과한 종목이 없습니다.\n`
+         + `시장이 약할 때는 정상적인 결과예요.`;
   } else {
-    msg += `🎯 [엄격] 신호 없음\n\n`;
-  }
+    if (strict.hits > 0) {
+      msg += `🎯 [엄격 ${strict.hits}종목] 신고가 + 거래량 동시\n`;
+      strict.results.slice(0, 5).forEach(r => {
+        msg += `${r.name} (${r.code}) · RS ${r.rsRating ?? '-'}\n`;
+        r.reasons.forEach(reason => { msg += ` ✅ ${reason}\n`; });
+        msg += `\n`;
+      });
+    } else {
+      msg += `🎯 [엄격] 신호 없음\n\n`;
+    }
 
-  if (basic.hits > 0) {
     const strictCodes = new Set((strict.results || []).map(r => r.code));
-    const basicOnly = basic.results.filter(r => !strictCodes.has(r.code));
+    const basicOnly = (basic.results || []).filter(r => !strictCodes.has(r.code));
     if (basicOnly.length > 0) {
       msg += `📊 [기본 추가 ${basicOnly.length}종목]\n`;
       basicOnly.slice(0, 5).forEach(r => {
-        msg += `${r.name} (${r.code})\n`;
+        msg += `${r.name} (${r.code}) · RS ${r.rsRating ?? '-'}\n`;
         r.reasons.forEach(reason => { msg += ` ✅ ${reason}\n`; });
-        msg += ` 신호 점수: ${r.score}점\n\n`;
+        msg += `\n`;
       });
+    } else if (strict.hits === 0) {
+      msg += `📊 [기본] 신호 없음\n`;
+      if (watchCount > 0) msg += `추세는 좋은데 방아쇠를 기다리는 종목 ${watchCount}개는 앱의 관찰 목록에서 확인하세요.`;
     }
-  } else {
-    msg += `📊 [기본] 신호 없음`;
   }
 
   msg = msg.trim();
@@ -1699,10 +1764,12 @@ export default {
         return corsResponse(data);
       }
 
-      // GET /scan-result?mode=basic|strict
+      // GET /scan-result?mode=basic|strict|watch
       if (url.pathname === '/scan-result') {
         const mode = url.searchParams.get('mode') || 'basic';
-        const key = mode === 'strict' ? 'scan_result_strict' : 'scan_result_basic';
+        const key = mode === 'strict' ? 'scan_result_strict'
+                  : mode === 'watch'  ? 'scan_result_watch'
+                  : 'scan_result_basic';
         const raw = await env.KV.get(key);
         if (!raw) return corsResponse({ error: '스캔 결과 없음. GitHub Actions 스캔을 먼저 실행하세요.' }, 404);
         return corsResponse(JSON.parse(raw));
@@ -1737,24 +1804,38 @@ export default {
             allResults = [...byCode.values()];
           }
 
-          // IBD RS 레이팅 90 이상으로 RS 조건 재적용 (전체 종목 기준 백분위)
-          allResults = applyRsRatingCondition(allResults);
+          // RS 레이팅을 시장 전체(관문 탈락 종목 포함) 기준으로 매기고,
+          // 기준 미달은 여기서 탈락시킨다 = 추세 관문의 마지막 항목.
+          const marketRs3m = Array.isArray(body.marketRs3m) ? body.marketRs3m : [];
+          const gatePassed = applyRsRatingCondition(allResults, marketRs3m);
 
-          allResults.sort((a, b) => b.score - a.score);
-          // 기본: 20일신고가·거래량급증·RS강세·월봉10선 중 2개 이상 / 엄격: 핵심3개(신고가·거래량·RS) 동시 충족
-          const basicResults  = allResults.filter(r => {
-            const { high20, vol, rs, ma10m } = r.flags ?? {};
-            return [high20, vol, rs, ma10m].filter(Boolean).length >= 2;
-          });
-          const strictResults = allResults.filter(r => r.flags?.high20 && r.flags?.vol && r.flags?.rs);
-          const basicData  = { scannedAt, total, kospiRs3m: Math.round(kospiRs3m*10)/10, hits: basicResults.length,  results: basicResults.slice(0,200) };
-          const strictData = { scannedAt, total, kospiRs3m: Math.round(kospiRs3m*10)/10, hits: strictResults.length, results: strictResults.slice(0,200) };
+          // 방아쇠 개수 → RS 레이팅 순으로 정렬
+          gatePassed.sort((a, b) => (b.score - a.score) || ((b.rsRating ?? 0) - (a.rsRating ?? 0)));
+
+          // 관문을 통과한 종목을 방아쇠 유무로 나눈다.
+          //   엄격 — 신고가와 거래량이 둘 다 터짐
+          //   기본 — 둘 중 하나 이상
+          //   관찰 — 추세는 좋은데 아직 방아쇠가 없음
+          const strictResults = gatePassed.filter(r => r.flags?.high20 && r.flags?.vol);
+          const basicResults  = gatePassed.filter(r => r.flags?.high20 || r.flags?.vol);
+          const watchResults  = gatePassed.filter(r => !r.flags?.high20 && !r.flags?.vol);
+
+          const meta = {
+            scannedAt, total,
+            kospiRs3m: Math.round(kospiRs3m * 10) / 10,
+            rsRatingMin: RS_RATING_MIN,
+            gatePassed: gatePassed.length,   // 추세 관문 통과 종목 수 (0이어도 정상 — 하락장)
+          };
+          const basicData  = { ...meta, hits: basicResults.length,  results: basicResults.slice(0,200) };
+          const strictData = { ...meta, hits: strictResults.length, results: strictResults.slice(0,200) };
+          const watchData  = { ...meta, hits: watchResults.length,  results: watchResults.slice(0,200) };
 
           // KV 저장 실패해도 카카오 알림은 반드시 전송
           let kvSaved = false;
           try {
             await env.KV.put('scan_result_basic',  JSON.stringify(basicData),  { expirationTtl: 86400 });
             await env.KV.put('scan_result_strict', JSON.stringify(strictData), { expirationTtl: 86400 });
+            await env.KV.put('scan_result_watch',  JSON.stringify(watchData),  { expirationTtl: 86400 });
             kvSaved = true;
           } catch(e) {
             console.error('KV 저장 실패 (무시하고 카카오 전송 진행):', e.message);
@@ -1766,7 +1847,9 @@ export default {
           try {
             const pushMsg = {
               title: '📈 자동 스크리너 완료',
-              body: `기본 ${basicResults.length}종목 · 엄격 ${strictResults.length}종목 발굴 (${total.toLocaleString()}종목 스캔)`,
+              body: basicResults.length > 0
+                ? `매수 후보 ${basicResults.length}종목 (엄격 ${strictResults.length}) · 관찰 ${watchResults.length}종목`
+                : `오늘은 매수 후보 없음 · 추세 통과 ${gatePassed.length}종목은 관찰 목록에`,
               url: '/trend-tracker/#screener'
             };
             pushResults = await broadcastPush(pushMsg, env);
@@ -1774,7 +1857,7 @@ export default {
             console.error('웹 푸시 발송 실패:', e.message);
           }
 
-          return corsResponse({ ok: true, saved: kvSaved, basicHits: basicResults.length, strictHits: strictResults.length, total, scannedAt, pushSent: pushResults.length });
+          return corsResponse({ ok: true, saved: kvSaved, basicHits: basicResults.length, strictHits: strictResults.length, watchHits: watchResults.length, gatePassed: gatePassed.length, total, scannedAt, pushSent: pushResults.length });
         }
 
         // ── 청크 스캔 모드: 결과만 반환, KV 쓰기 없음 ──
@@ -1812,6 +1895,9 @@ export default {
         // 해당 청크 종목 스캔
         const chunk = masterDB.slice(offset, offset + chunkSize);
         const chunkResults = [];
+        // RS 레이팅을 시장 전체 기준으로 내려면 관문 탈락 종목의 rs3m도 필요하다.
+        // 종목 정보는 빼고 숫자만 모아 보낸다 (전 종목이라도 수십 KB).
+        const chunkRs = [];
         for (let i = 0; i < chunk.length; i += 5) {
           const mini = chunk.slice(i, i + 5);
           const results = await Promise.allSettled(mini.map(async ({ code, name }) => {
@@ -1819,12 +1905,23 @@ export default {
               const data = await getOHLCV(code, env);
               // 거래정지 종목 제외
               if (!data.curr || data.isHalted) return null;
-              const { score, reasons, anySignal, flags } = calcSignalFlags(data, kospiRs3m);
-              if (!anySignal) return null;
-              return { code, name, score, reasons, flags, curr: data.curr, high20: data.high20, high52: data.high52, avgVol: data.avgVol, todayVol: data.todayVol, atr: data.atr, low10: data.low10, rs3m: Math.round(data.rs3m*10)/10, ma10m: data.ma10m };
+              const rs3m = Math.round(data.rs3m * 10) / 10;
+              const { score, reasons, anySignal, flags, trend } = calcSignalFlags(data, kospiRs3m);
+              if (!anySignal) return { _rsOnly: true, rs3m };   // 관문 탈락 — RS 모집단에만 기여
+              return {
+                code, name, score, reasons, flags, trend,
+                curr: data.curr, high20: data.high20, high52: data.high52, low52: data.low52,
+                avgVol: data.avgVol, todayVol: data.todayVol, atr: data.atr, low10: data.low10,
+                rs3m, ma10m: data.ma10m,
+                ma50: Math.round(data.ma50), ma150: Math.round(data.ma150), ma200: Math.round(data.ma200),
+              };
             } catch { return null; }
           }));
-          for (const r of results) if (r.status === 'fulfilled' && r.value) chunkResults.push(r.value);
+          for (const r of results) {
+            if (r.status !== 'fulfilled' || !r.value) continue;
+            chunkRs.push(r.value.rs3m);
+            if (!r.value._rsOnly) chunkResults.push(r.value);
+          }
           if (i + 5 < chunk.length) await new Promise(res => setTimeout(res, 200));
         }
 
@@ -1832,7 +1929,7 @@ export default {
         const done = nextOffset >= total;
 
         // KV 쓰기 없이 결과를 응답으로만 반환
-        return corsResponse({ ok: true, done, nextOffset: done ? null : nextOffset, total, kospiRs3m, scannedAt, chunkResults });
+        return corsResponse({ ok: true, done, nextOffset: done ? null : nextOffset, total, kospiRs3m, scannedAt, chunkResults, chunkRs });
       }
 
       // GET /token
