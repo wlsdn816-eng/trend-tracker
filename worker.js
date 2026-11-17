@@ -705,6 +705,38 @@ async function getOHLCV(code, env) {
   const avgVol = Math.round(vols.slice(0, 20).reduce((a,b)=>a+b,0) / Math.min(20, vols.length));
   const todayVol = vols[0] || 0;
 
+  // 20일 평균 거래대금 — 거래량 배수만 보면 분모가 작은 종목이 유리해진다.
+  // 하루 몇천만원 도는 종목은 신호가 맞아도 사고팔 수가 없다.
+  const turnN = Math.min(20, rows.length);
+  const avgTurnover = turnN > 0
+    ? Math.round(rows.slice(0, turnN).reduce((a, r) => a + r.close * r.vol, 0) / turnN)
+    : 0;
+
+  // 당일 종가 위치 (0~100). 같은 양봉이라도 고가에 마감한 것과
+  // 위꼬리 달고 밀린 것은 다르다. 후자는 돌파가 매도에 눌린 것.
+  const dayRange = (highs[0] ?? 0) - (lows[0] ?? 0);
+  const closePos = dayRange > 0
+    ? Math.round(((curr - lows[0]) / dayRange) * 100)
+    : 50;   // 상한가 등으로 고가=저가면 판단 보류
+
+  // 변동성 수축(VCP) — 최근 5일 평균 일중변동폭 / 그 직전 20일 평균.
+  // 1보다 작을수록 조여진 상태. 미너비니는 돌파 전 수축을 핵심으로 본다.
+  const rangePct = (i) => {
+    const c = closes[i];
+    return c > 0 ? ((highs[i] - lows[i]) / c) * 100 : 0;
+  };
+  const meanRange = (from, n) => {
+    const idx = [];
+    for (let i = from; i < from + n && i < rows.length; i++) idx.push(i);
+    if (idx.length < n * 0.8) return 0;
+    return idx.reduce((a, i) => a + rangePct(i), 0) / idx.length;
+  };
+  const recentRange = meanRange(0, 5);
+  const priorRange  = meanRange(5, 20);
+  const vcpRatio = (recentRange > 0 && priorRange > 0)
+    ? Math.round((recentRange / priorRange) * 100) / 100
+    : 0;   // 0 = 계산 불가
+
   // 14일 ATR
   let atrSum = 0, atrCount = 0;
   for (let i = 0; i < Math.min(14, rows.length - 1); i++) {
@@ -777,6 +809,7 @@ async function getOHLCV(code, env) {
   const haltedPrice = rows.slice(0, 3).every(r => r.high === r.low && r.high === r.close && r.close > 0);
   const isHalted = haltedVol || haltedPrice;
   return { code, curr, prevClose, high20, low10, avgVol, todayVol, atr, high52, low52,
+           avgTurnover, closePos, vcpRatio,
            ma50, ma150, ma200, ma200Prev, rs3m, ma10m, rows, latestDate, isHalted };
 }
 
@@ -1296,13 +1329,19 @@ function searchStocks(q) {
 // RS 레이팅 기준선 — 시장 상위 20%
 const RS_RATING_MIN = 80;
 
+// 20일 평균 거래대금 하한 (원).
+// 신호가 맞아도 사고팔 수 없는 종목을 걸러낸다.
+// 3억이면 500만원어치 매매가 하루 거래의 1.7% 수준이라 호가를 밀지 않는다.
+// 더 큰 금액을 운용하면 이 값을 올리면 된다.
+const MIN_TURNOVER = 300_000_000;
+
 /**
  * 미너비니 추세 템플릿 — "지금 상승 추세인가"를 판정하는 관문.
  * 여기를 통과하지 못하면 신고가가 터지든 거래량이 터지든 후보가 아니다.
  * (RS 레이팅은 전 종목 백분위라 sendFinal 단계에서 따로 적용한다)
  */
 function calcTrendTemplate(data) {
-  const { curr, ma50, ma150, ma200, ma200Prev, high52, low52 } = data;
+  const { curr, ma50, ma150, ma200, ma200Prev, high52, low52, avgTurnover } = data;
   const haveMa = curr > 0 && ma50 > 0 && ma150 > 0 && ma200 > 0;
 
   // 1) 정배열: 현재가 > 50일선 > 150일선 > 200일선
@@ -1313,9 +1352,11 @@ function calcTrendTemplate(data) {
   const t_offLow   = low52 > 0 && curr >= low52 * 1.30;
   // 4) 52주 고점 대비 -25% 이내 — 고점에서 크게 밀리지 않았는가
   const t_nearHigh = high52 > 0 && curr >= high52 * 0.75;
+  // 5) 유동성 — 살 수 있고 팔 수 있는 종목인가
+  const t_liquid   = (avgTurnover ?? 0) >= MIN_TURNOVER;
 
-  const pass = t_stack && t_ma200Up && t_offLow && t_nearHigh;
-  return { pass, t_stack, t_ma200Up, t_offLow, t_nearHigh };
+  const pass = t_stack && t_ma200Up && t_offLow && t_nearHigh && t_liquid;
+  return { pass, t_stack, t_ma200Up, t_offLow, t_nearHigh, t_liquid };
 }
 
 function calcSignalFlags(data, kospiRs3m = 0) {
@@ -1953,6 +1994,7 @@ export default {
             code, name, score, reasons, flags, trend,
             curr: data.curr, high20: data.high20, high52: data.high52, low52: data.low52,
             avgVol: data.avgVol, todayVol: data.todayVol, atr: data.atr, low10: data.low10,
+            avgTurnover: data.avgTurnover, closePos: data.closePos, vcpRatio: data.vcpRatio,
             rs3m, ma10m: data.ma10m,
             ma50: Math.round(data.ma50), ma150: Math.round(data.ma150), ma200: Math.round(data.ma200),
           };

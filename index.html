@@ -3917,6 +3917,15 @@ function applyScreenerFilter() {
     const scoreCount = [f.high20,f.vol,f.near52w,f.rs,f.ma10m].filter(Boolean).length;
     const barColor = scoreCount >= 3 ? 'var(--green)' : scoreCount === 2 ? '#f59e0b' : 'var(--fg3)';
 
+    // 관찰용 지표 — 아직 선별 조건이 아니라 값만 보여준다.
+    // 며칠 눈으로 훑어야 어느 선에서 잘라야 할지 감이 잡힌다.
+    const obsBadges = [
+      r.closePos != null
+        ? `<span title="당일 종가 위치 (고가=100). 높을수록 돌파가 눌리지 않았다는 뜻" style="background:${r.closePos>=70?'#22c55e22':'#64748b22'};color:${r.closePos>=70?'#22c55e':'#64748b'};border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700;">종가 ${r.closePos}%</span>` : '',
+      r.vcpRatio
+        ? `<span title="최근 5일 변동폭 ÷ 직전 20일. 1보다 작을수록 조여진 상태" style="background:${r.vcpRatio<=0.8?'#22c55e22':'#64748b22'};color:${r.vcpRatio<=0.8?'#22c55e':'#64748b'};border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700;">VCP ${r.vcpRatio.toFixed(2)}</span>` : '',
+    ].join('');
+
     const isExpanded = _scanExpandedSet.has(r.code);
     const detailRows = isExpanded ? `
       <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
@@ -3948,6 +3957,18 @@ function applyScreenerFilter() {
           <span class="data-label">ATR (14일)</span>
           <span class="data-value">${r.atr ? r.atr.toLocaleString()+'원' : '—'}</span>
         </div>
+        <div class="data-row">
+          <span class="data-label">20일 평균 거래대금</span>
+          <span class="data-value">${r.avgTurnover ? Math.round(r.avgTurnover/100000000*10)/10+'억원' : '—'}</span>
+        </div>
+        <div class="data-row" title="당일 종가가 고가에 가까울수록 돌파가 눌리지 않았다는 뜻">
+          <span class="data-label">종가 위치</span>
+          <span class="data-value" style="color:${(r.closePos??0)>=70?'var(--green)':(r.closePos??0)>=40?'var(--fg2)':'var(--red)'}">${r.closePos != null ? r.closePos+'%' : '—'}<span style="font-size:11px;color:var(--fg3)"> (고가=100)</span></span>
+        </div>
+        <div class="data-row" title="최근 5일 변동폭 ÷ 직전 20일 변동폭. 1보다 작을수록 조여진 상태">
+          <span class="data-label">변동성 수축 (VCP)</span>
+          <span class="data-value" style="color:${r.vcpRatio>0&&r.vcpRatio<=0.8?'var(--green)':'var(--fg2)'}">${r.vcpRatio ? r.vcpRatio.toFixed(2) : '—'}<span style="font-size:11px;color:var(--fg3)"> (낮을수록 수축)</span></span>
+        </div>
       </div>` : '';
 
     return `
@@ -3956,7 +3977,7 @@ function applyScreenerFilter() {
         <div style="flex:1;min-width:0;">
           <span class="card-title" style="font-size:14px;">${r.name}</span>
           <span style="font-size:11px;color:var(--fg3);margin-left:6px;">${r.code}</span>
-          <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:5px;">${scoreBadges || ''}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:5px;">${scoreBadges || ''}${obsBadges}</div>
         </div>
         <div style="text-align:right;flex-shrink:0;margin-left:10px;">
           <div style="font-size:15px;font-weight:700;">${r.curr ? r.curr.toLocaleString()+'원' : '—'}</div>
