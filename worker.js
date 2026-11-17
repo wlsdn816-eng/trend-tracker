@@ -1101,10 +1101,11 @@ async function loadMasterDB(env) {
   if (masterDB.length > 0 && now - masterLoadedAt < MASTER_TTL) return;
 
   const all = [];
+  let failed = 0;
   for (const { url, tailLen } of MASTER_URLS) {
     try {
       const res = await fetch(url);
-      if (!res.ok) continue;
+      if (!res.ok) { failed++; continue; }
 
       const blob = await res.arrayBuffer();
       const view = new DataView(blob);
@@ -1149,22 +1150,43 @@ async function loadMasterDB(env) {
         break;
       }
     } catch (e) {
+      failed++;
       console.error('마스터파일 로드 실패:', url, e.message);
     }
+  }
+
+  // 코스피/코스닥 중 한쪽만 로드되면 종목 목록이 통째로 달라져서
+  // 청크 오프셋이 어긋난다 → 같은 종목이 두 번 스캔되거나 일부가 누락됨.
+  // 하나라도 실패하면 기존 masterDB를 그대로 유지한다.
+  if (failed > 0) {
+    console.error(`[마스터DB] ${failed}개 시장 로드 실패 — 기존 목록 유지 (현재 ${masterDB.length}개)`);
+    return;
   }
 
   if (all.length > 0) {
     // 스팩(SPAC), 리츠 등 노이즈 종목 제거
     const EXCLUDE_KEYWORDS = ['스팩', 'SPAC', '스팩주'];
-    masterDB = all.filter(({ name }) =>
+    const filtered = all.filter(({ name }) =>
       !EXCLUDE_KEYWORDS.some(kw => name.includes(kw))
     );
+
+    // 종목코드 기준 중복 제거 + 코드순 정렬.
+    // 정렬이 핵심 — 신규 로드든 KV 캐시 복원이든 순서가 같아야
+    // 청크마다 다른 isolate가 처리해도 오프셋이 일치한다.
+    const byCode = new Map();
+    for (const item of filtered) byCode.set(item.code, item);
+    masterDB = [...byCode.values()].sort((a, b) => a.code.localeCompare(b.code));
+
+    const dupCount = filtered.length - masterDB.length;
+    if (dupCount > 0) console.log(`[마스터DB] 중복 종목 ${dupCount}개 제거`);
     masterLoadedAt = now;
 
     // KV에 masterDB 캐싱 (검색용 — TTL 25시간)
     try {
       if (env && env.KV) {
-        await env.KV.put('master_db_cache', JSON.stringify(masterDB), { expirationTtl: 48 * 60 * 60 });
+        // TTL은 MASTER_TTL(24시간)과 맞춘다 — 캐시가 더 오래 살아남으면
+        // 어떤 isolate는 어제 목록, 어떤 isolate는 오늘 목록을 쓰게 되어 오프셋이 어긋난다.
+        await env.KV.put('master_db_cache', JSON.stringify(masterDB), { expirationTtl: 24 * 60 * 60 });
         console.log(`[마스터DB] KV 캐시 저장 완료: ${masterDB.length}개 종목`);
       }
     } catch (e) {
@@ -1680,6 +1702,18 @@ export default {
           const total       = parseInt(body.total ?? 0);
           const kospiRs3m   = parseFloat(body.kospiRs3m ?? 0);
           const sendKakao   = !!body.sendKakao;
+
+          // 종목코드 기준 중복 제거 (안전망).
+          // masterDB 쪽을 고쳤지만, 청크마다 다른 isolate가 처리하는 구조라
+          // 목록이 어긋나면 같은 종목이 두 번 들어올 수 있다.
+          // 같은 종목이 여러 번 왔다면 가장 늦게 조회된(= 종가에 가까운) 것을 남긴다.
+          {
+            const byCode = new Map();
+            for (const r of allResults) byCode.set(r.code, r);
+            const dupCount = allResults.length - byCode.size;
+            if (dupCount > 0) console.warn(`[스캔결과] 중복 종목 ${dupCount}개 제거`);
+            allResults = [...byCode.values()];
+          }
 
           // IBD RS 레이팅 90 이상으로 RS 조건 재적용 (전체 종목 기준 백분위)
           allResults = applyRsRatingCondition(allResults);
