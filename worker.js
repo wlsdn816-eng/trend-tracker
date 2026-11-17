@@ -205,7 +205,9 @@ async function sendFcmV1Push(subscription, payload, env) {
   const sub = typeof subscription === 'string' ? JSON.parse(subscription) : subscription;
   const msg = {
     message: {
-      web_push: {
+      // FCM v1의 필드명은 webpush (언더바 없음). web_push로 보내면
+      // "Unknown name web_push at 'message'" 400 오류가 난다.
+      webpush: {
         notification: {
           title: payload.title || '📈 추세추종 매매 트래커',
           body:  payload.body  || '새 알림이 있어요.',
