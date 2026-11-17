@@ -299,9 +299,17 @@ async function broadcastPush(payload, env) {
       results.push({ key: key.name, ok: true, status });
     } catch(e) {
       results.push({ key: key.name, ok: false, error: e.message });
-      // 410 Gone = 구독 만료 → 삭제
-      if (e.message.includes('410')) {
+      // 만료·해지된 구독은 삭제한다. 그대로 두면 매번 실패 로그만 쌓인다.
+      //   410 Gone            — Web Push 표준 (구독 만료)
+      //   404 NotRegistered   — FCM (앱 삭제·데이터 초기화된 기기)
+      //   UNREGISTERED        — FCM v1 errorCode
+      const msg = e.message || '';
+      const isGone = msg.includes('410')
+        || msg.includes('UNREGISTERED')
+        || msg.includes('NotRegistered');
+      if (isGone) {
         await env.KV.delete(key.name).catch(() => {});
+        console.log(`[푸시] 만료된 구독 삭제: ${key.name}`);
       }
     }
   }
