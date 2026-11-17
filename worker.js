@@ -659,10 +659,12 @@ async function getOHLCV(code, env) {
     + `&FID_PERIOD_DIV_CODE=${div}&FID_ORG_ADJ_PRC=0`
     + `&FID_INPUT_DATE_1=20200101&FID_INPUT_DATE_2=${today}`;
 
-  const [dailyRes, weeklyRes, monthlyRes] = await Promise.all([
+  // 호출은 종목당 2회로 묶는다. 3회로 늘렸더니 KIS 쪽에서 막혀
+  // 수집률이 80% → 51%로 떨어졌다(2,596종목 중 1,332개만 성공).
+  // 월봉은 10개월선 하나 때문에 불렀던 것이라 주봉 43개로 대신한다.
+  const [dailyRes, weeklyRes] = await Promise.all([
     fetch(period('D'), { headers: kisHeaders(token, 'FHKST03010100', env) }),
     fetch(period('W'), { headers: kisHeaders(token, 'FHKST03010100', env) }),
-    fetch(period('M'), { headers: kisHeaders(token, 'FHKST03010100', env) }),
   ]);
 
   if (!dailyRes.ok) throw new Error(`KIS OHLCV 실패: HTTP ${dailyRes.status}`);
@@ -719,7 +721,7 @@ async function getOHLCV(code, env) {
   const ma50 = smaOf(closes, 0, 50);
 
   // ── 주봉 기반 장기 지표 ──
-  let ma150 = 0, ma200 = 0, ma200Prev = 0, high52 = 0, low52 = 0;
+  let ma150 = 0, ma200 = 0, ma200Prev = 0, high52 = 0, low52 = 0, ma10m = 0;
   try {
     if (weeklyRes.ok) {
       const wData = await weeklyRes.json();
@@ -738,6 +740,8 @@ async function getOHLCV(code, env) {
         ma200 = smaOf(wCloses, 0, 40);
         // 200일선 추세 판정용 — 약 한 달(4주) 전 시점
         ma200Prev = smaOf(wCloses, 4, 40);
+        // 월봉 10선(10개월 이동평균) ≈ 43주선
+        ma10m = Math.round(smaOf(wCloses, 0, 43));
 
         // 진짜 52주 고가·저가 (주봉 52개)
         const w52 = wRows.slice(0, 52);
@@ -758,25 +762,6 @@ async function getOHLCV(code, env) {
   // RS (상대강도): 최근 3개월(약 63거래일) 수익률
   const close63ago = closes[Math.min(62, closes.length - 1)] || curr;
   const rs3m = close63ago > 0 ? ((curr - close63ago) / close63ago) * 100 : 0;
-
-  // 월봉 10선 (MA10M): 월봉 API로 정확하게 계산
-  // 월봉 output2도 최신순. index 0 = 이번 달(미완성), index 1~10 = 직전 10개 완성 월
-  let ma10m = 0;
-  try {
-    if (monthlyRes.ok) {
-      const monthlyData = await monthlyRes.json();
-      if (monthlyData.rt_cd === '0') {
-        const mRows = (monthlyData.output2 || []).map(r => parseInt(r.stck_clpr) || 0).filter(v => v > 0);
-        // index 0 = 이번 달(진행 중이므로 제외), index 1~10 = 직전 10개 완성 월
-        const ma10mSlice = mRows.slice(1, 11);
-        if (ma10mSlice.length >= 5) {
-          ma10m = Math.round(ma10mSlice.reduce((a, b) => a + b, 0) / ma10mSlice.length);
-        }
-      }
-    }
-  } catch(e) {
-    console.warn(`[월봉MA] ${code} 계산 실패:`, e.message);
-  }
 
   const latestDate = rows[0]?.date || '';
   const haltedVol = vols.slice(0, 3).every(v => v === 0);
@@ -1930,38 +1915,58 @@ export default {
         // RS 레이팅을 시장 전체 기준으로 내려면 관문 탈락 종목의 rs3m도 필요하다.
         // 종목 정보는 빼고 숫자만 모아 보낸다 (전 종목이라도 수십 KB).
         const chunkRs = [];
+
+        const scanOne = async ({ code, name }) => {
+          const data = await getOHLCV(code, env);          // 실패 시 throw → 재시도 대상
+          if (!data.curr || data.isHalted) return null;    // 거래정지 — 조용히 제외
+          const rs3m = Math.round(data.rs3m * 10) / 10;
+          const { score, reasons, anySignal, flags, trend } = calcSignalFlags(data, kospiRs3m);
+          if (!anySignal) return { _rsOnly: true, rs3m };  // 관문 탈락 — RS 모집단에만 기여
+          return {
+            code, name, score, reasons, flags, trend,
+            curr: data.curr, high20: data.high20, high52: data.high52, low52: data.low52,
+            avgVol: data.avgVol, todayVol: data.todayVol, atr: data.atr, low10: data.low10,
+            rs3m, ma10m: data.ma10m,
+            ma50: Math.round(data.ma50), ma150: Math.round(data.ma150), ma200: Math.round(data.ma200),
+          };
+        };
+
+        const collect = (r) => {
+          if (r.status !== 'fulfilled' || !r.value) return;
+          chunkRs.push(r.value.rs3m);
+          if (!r.value._rsOnly) chunkResults.push(r.value);
+        };
+
+        // 1차 스캔 — 실패한 종목은 따로 모은다
+        const retryQueue = [];
         for (let i = 0; i < chunk.length; i += 5) {
           const mini = chunk.slice(i, i + 5);
-          const results = await Promise.allSettled(mini.map(async ({ code, name }) => {
-            try {
-              const data = await getOHLCV(code, env);
-              // 거래정지 종목 제외
-              if (!data.curr || data.isHalted) return null;
-              const rs3m = Math.round(data.rs3m * 10) / 10;
-              const { score, reasons, anySignal, flags, trend } = calcSignalFlags(data, kospiRs3m);
-              if (!anySignal) return { _rsOnly: true, rs3m };   // 관문 탈락 — RS 모집단에만 기여
-              return {
-                code, name, score, reasons, flags, trend,
-                curr: data.curr, high20: data.high20, high52: data.high52, low52: data.low52,
-                avgVol: data.avgVol, todayVol: data.todayVol, atr: data.atr, low10: data.low10,
-                rs3m, ma10m: data.ma10m,
-                ma50: Math.round(data.ma50), ma150: Math.round(data.ma150), ma200: Math.round(data.ma200),
-              };
-            } catch { return null; }
-          }));
-          for (const r of results) {
-            if (r.status !== 'fulfilled' || !r.value) continue;
-            chunkRs.push(r.value.rs3m);
-            if (!r.value._rsOnly) chunkResults.push(r.value);
-          }
+          const results = await Promise.allSettled(mini.map(scanOne));
+          results.forEach((r, idx) => {
+            if (r.status === 'rejected') retryQueue.push(mini[idx]);
+            else collect(r);
+          });
           if (i + 5 < chunk.length) await new Promise(res => setTimeout(res, 200));
+        }
+
+        // 2차 — 조회에 실패한 종목만 한 번 더. KIS 호출 제한에 걸린 건들이라
+        // 간격을 넓혀 재시도한다. 이게 없으면 종목이 조용히 누락된다.
+        let failed = 0;
+        for (let i = 0; i < retryQueue.length; i += 3) {
+          await new Promise(res => setTimeout(res, 400));
+          const mini = retryQueue.slice(i, i + 3);
+          const results = await Promise.allSettled(mini.map(scanOne));
+          results.forEach(r => {
+            if (r.status === 'rejected') failed++;
+            else collect(r);
+          });
         }
 
         const nextOffset = offset + chunkSize;
         const done = nextOffset >= total;
 
         // KV 쓰기 없이 결과를 응답으로만 반환
-        return corsResponse({ ok: true, done, nextOffset: done ? null : nextOffset, total, kospiRs3m, scannedAt, chunkResults, chunkRs });
+        return corsResponse({ ok: true, done, nextOffset: done ? null : nextOffset, total, kospiRs3m, scannedAt, chunkResults, chunkRs, failed });
       }
 
       // GET /token
