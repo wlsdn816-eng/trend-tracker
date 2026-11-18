@@ -1366,9 +1366,6 @@ function calcSignalFlags(data, kospiRs3m = 0) {
 
   // ── 참고 지표 ──
   const flag_near52w = data.high52 > 0 && data.curr >= data.high52 * 0.90; // -10% 이내
-  // 월봉 10선 "위에 있음". 예전에는 돌파 당일만 참이라
-  // 몇 달째 10선 위에서 잘 가는 건강한 추세주가 오히려 불리했다.
-  const flag_ma10m   = data.ma10m > 0 && data.curr > data.ma10m;
   // RS: 청크 단계의 임시 판정 (sendFinal에서 전 종목 기준 RS 레이팅으로 교체)
   const flag_rs      = data.rs3m > 0 && data.rs3m > kospiRs3m;
 
@@ -1378,7 +1375,6 @@ function calcSignalFlags(data, kospiRs3m = 0) {
   if (flag_high20)  reasons.push('20일 신고가 돌파');
   if (flag_vol)     reasons.push('거래량 2배');
   if (flag_near52w) reasons.push('52주 고점 -10% 이내');
-  if (flag_ma10m)   reasons.push(`월봉 10선 위 (MA: ${data.ma10m.toLocaleString()})`);
 
   // 방아쇠 개수가 점수 (0~2). 정렬·표시에 쓴다.
   const score = [flag_high20, flag_vol].filter(Boolean).length;
@@ -1390,7 +1386,7 @@ function calcSignalFlags(data, kospiRs3m = 0) {
   return {
     score, reasons, anySignal,
     trend,
-    flags: { high20: flag_high20, vol: flag_vol, near52w: flag_near52w, rs: flag_rs, ma10m: flag_ma10m },
+    flags: { high20: flag_high20, vol: flag_vol, near52w: flag_near52w, rs: flag_rs },
   };
 }
 
@@ -1715,6 +1711,42 @@ async function getResearchFeed(env) {
 }
 
 // ────────────────────────────────────────────────────────────
+// GitHub Actions 스캔 워크플로 직접 호출 (Cloudflare Cron → GitHub)
+// 필요: Worker Secret GITHUB_TOKEN (이 저장소 Actions: Read and write)
+// ────────────────────────────────────────────────────────────
+async function dispatchScanWorkflow(env, cron) {
+  const rec = { at: new Date().toISOString(), cron, ok: false, status: 0, note: '' };
+  try {
+    if (!env.GITHUB_TOKEN) {
+      rec.note = 'GITHUB_TOKEN 미설정';
+    } else {
+      const res = await fetch(
+        'https://api.github.com/repos/wlsdn816-eng/trend-tracker/actions/workflows/daily-scan.yml/dispatches',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
+            'Accept': 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+            'User-Agent': 'kis-proxy-worker',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ ref: 'main' }),
+        }
+      );
+      rec.status = res.status;
+      rec.ok = res.status === 204;
+      if (!rec.ok) rec.note = (await res.text()).slice(0, 200);
+    }
+  } catch (e) {
+    rec.note = String(e.message || e).slice(0, 200);
+  }
+  console.log('[스캔 깨우기]', JSON.stringify(rec));
+  try { await env.KV.put('last_scan_dispatch', JSON.stringify(rec), { expirationTtl: 7 * 86400 }); } catch (_) {}
+  return rec;
+}
+
+// ────────────────────────────────────────────────────────────
 // 메인 핸들러
 // ────────────────────────────────────────────────────────────
 export default {
@@ -1722,6 +1754,20 @@ export default {
   // ※ 자동선별 스캔 + 카카오 알림은 GitHub Actions(/scan-chunk + sendFinal)에서 담당
   async scheduled(event, env, ctx) {
     ctx.waitUntil((async () => {
+      // 0) 평일이면 GitHub 스캔 워크플로를 직접 깨운다.
+      //    GitHub의 예약 실행은 지연되거나 통째로 건너뛰는 날이 있어서(11/12, 11/17, 11/18 실측),
+      //    시각이 정확한 Cloudflare Cron이 GitHub에 "지금 시작해"라고 요청한다.
+      //    07:00에 한 번, 07:30에 한 번 더 — 이미 그날 스캔이 끝났으면 워크플로가 스스로 종료한다.
+      {
+        const kstDow = new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCDay(); // 0=일
+        // event.cron이 있을 때만 = 진짜 예약 실행. /run-cron 수동 호출로는 스캔을 깨우지 않는다.
+        if (event?.cron && kstDow >= 1 && kstDow <= 5) {
+          await dispatchScanWorkflow(env, event.cron);
+        }
+      }
+      // 이 아래(보유종목 종가·푸시)는 하루 한 번(07:00 Cron)만
+      if (event?.cron === '30 7 * * 1-5') return;
+
       // 1) 보유 포지션 종가 스냅샷 KV에 저장
       try {
         const holdingsRaw = await env.KV.get('tf_holdings');
@@ -1766,8 +1812,8 @@ export default {
           const kstNow  = new Date(Date.now() + 9 * 60 * 60 * 1000);
           const dateStr = `${kstNow.getMonth() + 1}/${kstNow.getDate()}`;
           const payload = {
-            title: '📈 오늘의 스캔 완료',
-            body:  `${dateStr} 보유종목 종가 업데이트가 완료됐어요. 확인해보세요!`,
+            title: '📊 보유종목 종가 업데이트',
+            body:  `${dateStr} 보유종목 종가가 저장됐어요. (자동 스크리너 결과는 별도 알림으로 와요)`,
             url:   'https://wlsdn816-eng.github.io/trend-tracker/',
           };
           const results = await broadcastPush(payload, env);
@@ -1846,6 +1892,27 @@ export default {
         const code = url.searchParams.get('code') || '';
         if (!code) return corsResponse({ error: 'code 파라미터 필요' }, 400);
         const data = await getOHLCV(code, env);
+        // 수동 스크리너용: withRs=1이면 자동 스크리너와 같은 추세 관문·RS 레이팅을 함께 계산해 준다.
+        // (휴장일 확인 등 다른 호출은 KV를 읽지 않도록 옵션으로만 켠다)
+        if (url.searchParams.get('withRs') === '1') {
+          const trend = calcTrendTemplate(data);
+          let rsRating = null, rsPoolAt = null;
+          try {
+            const pool = await env.KV.get('market_rs3m', 'json');
+            if (pool && Array.isArray(pool.values) && pool.values.length > 0) {
+              const v = pool.values;                 // 오름차순 정렬 저장
+              let lo = 0, hi = v.length;
+              while (lo < hi) { const mid = (lo + hi) >> 1; if (v[mid] < data.rs3m) lo = mid + 1; else hi = mid; }
+              rsRating = Math.min(99, Math.floor((lo / v.length) * 100));
+              rsPoolAt = pool.scannedAt || null;
+            }
+          } catch(e) { console.error('RS 모집단 읽기 실패:', e.message); }
+          return corsResponse({
+            ...data,
+            ma50: Math.round(data.ma50), ma150: Math.round(data.ma150), ma200: Math.round(data.ma200),
+            trend, rsRating, rsPoolAt, rsMin: RS_RATING_MIN,
+          });
+        }
         return corsResponse(data);
       }
 
@@ -1921,6 +1988,11 @@ export default {
             await env.KV.put('scan_result_basic',  JSON.stringify(basicData),  { expirationTtl: 86400 });
             await env.KV.put('scan_result_strict', JSON.stringify(strictData), { expirationTtl: 86400 });
             await env.KV.put('scan_result_watch',  JSON.stringify(watchData),  { expirationTtl: 86400 });
+            // 수동 스크리너가 같은 기준으로 RS 레이팅을 매길 수 있도록 시장 전체 rs3m 분포를 남긴다
+            if (marketRs3m.length > 0) {
+              const values = marketRs3m.filter(x => Number.isFinite(x)).sort((a, b) => a - b);
+              await env.KV.put('market_rs3m', JSON.stringify({ scannedAt, values }), { expirationTtl: 7 * 86400 });
+            }
             kvSaved = true;
           } catch(e) {
             console.error('KV 저장 실패 (무시하고 카카오 전송 진행):', e.message);
@@ -1995,7 +2067,7 @@ export default {
             curr: data.curr, high20: data.high20, high52: data.high52, low52: data.low52,
             avgVol: data.avgVol, todayVol: data.todayVol, atr: data.atr, low10: data.low10,
             avgTurnover: data.avgTurnover, closePos: data.closePos, vcpRatio: data.vcpRatio,
-            rs3m, ma10m: data.ma10m,
+            rs3m,
             ma50: Math.round(data.ma50), ma150: Math.round(data.ma150), ma200: Math.round(data.ma200),
           };
         };

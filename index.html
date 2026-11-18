@@ -933,7 +933,7 @@
         </div>
         <div class="summary-tile">
           <div class="summary-tile-val green" id="sum-break">0</div>
-          <div class="summary-tile-label">돌파 신호</div>
+          <div class="summary-tile-label">매수 후보</div>
         </div>
         <div class="summary-tile">
           <div class="summary-tile-val orange" id="sum-watch">0</div>
@@ -1015,7 +1015,7 @@
 
       <div class="info-pill">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        신호 조건: ① 현재가 ≥ 20일 신고가 × 98%  ② 거래량 ≥ 평균 1.5배  ③ 52주 신고가 -10% 이내 · 각 34/33/33점, 100점 = 돌파 🔥
+        자동 스크리너와 같은 기준입니다. <b>① 추세 관문</b> — 정배열(현재가&gt;50&gt;150&gt;200일선) · 200일선 상승 · 52주 저점 +30% · 52주 고점 −25% 이내 · 거래대금 3억 · RS 80+ &nbsp;<b>② 방아쇠</b> — 20일 신고가 −2% 이내 / 거래량 2배. 관문 통과 + 방아쇠 2개 = 강력 돌파 ⚡, 1개 = 매수 후보 🔥, 0개 = 관찰 👀
       </div>
 
       <div id="screener-list"></div>
@@ -1576,15 +1576,33 @@ function today() {
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 }
-function signalScore(s) {
-  let score = 0;
-  const curr = Number(s.curr), high20 = Number(s.high20),
-        vol = Number(s.vol), avgVol = Number(s.avgVol),
-        high52 = Number(s.high52);
-  if (curr >= high20 * 0.98 && high20 > 0) score += 34;    // ① 20일 신고가 -2% 이내
-  if (vol >= avgVol * 2.0 && avgVol > 0) score += 33;      // ② 거래량 2배 이상
-  if (high52 > 0 && curr >= high52 * 0.9) score += 33;     // ③ 52주 신고가 대비 -10% 이내
-  return score;
+// ── 수동 스크리너 판정 — 자동 스크리너(worker.js)와 같은 기준 ──
+//   관문: 정배열 · 200일선 상승 · 52주 저점 +30% · 52주 고점 −25% 이내 · 거래대금 3억 · RS 80+
+//   방아쇠: 20일 신고가 −2% 이내 / 거래량 2배
+//   관문 통과 + 방아쇠 2개 = 강력 돌파, 1개 = 매수 후보, 0개 = 관찰, 관문 탈락 = 추세 미달
+const MANUAL_RS_MIN = 80;
+const TREND_LABELS = {
+  t_stack:    '정배열 (현재가>50>150>200일선)',
+  t_ma200Up:  '200일선 상승',
+  t_offLow:   '52주 저점 +30% 이상',
+  t_nearHigh: '52주 고점 −25% 이내',
+  t_liquid:   '20일 평균 거래대금 3억 이상',
+};
+function manualStatus(s) {
+  const t = s.trend;
+  if (!t) return { kind: 'stale', score: 0, fails: [] };   // 아직 새 기준으로 조회되지 않은 종목
+  const curr = Number(s.curr), high20 = Number(s.high20), vol = Number(s.vol), avgVol = Number(s.avgVol);
+  const high20Ok = curr > 0 && high20 > 0 && curr >= high20 * 0.98;
+  const volOk    = vol > 0 && avgVol > 0 && vol >= avgVol * 2;
+  const rsKnown  = s.rsRating != null;
+  const rsOk     = rsKnown ? s.rsRating >= MANUAL_RS_MIN : true;   // 분포가 없으면 막지 않고 '미확인'으로 표시
+  const fails = Object.keys(TREND_LABELS).filter(k => !t[k]).map(k => TREND_LABELS[k]);
+  if (rsKnown && !rsOk) fails.push(`RS 레이팅 ${s.rsRating} (80 미만)`);
+  const gate = fails.length === 0;
+  const n = (high20Ok ? 1 : 0) + (volOk ? 1 : 0);
+  const kind = !gate ? 'fail' : n === 2 ? 'strict' : n === 1 ? 'basic' : 'watch';
+  const score = !gate ? 0 : n === 2 ? 100 : n === 1 ? 67 : 34;
+  return { kind, score, fails, high20Ok, volOk, rsKnown };
 }
 
 // ─── SCREENER ────────────────────────────────────────────────
@@ -1602,14 +1620,41 @@ function renderScreener() {
   }
 
   list.innerHTML = screeners.map((s, i) => {
-    const score = signalScore(s);
-    const isStrictBreak = score >= 100;
-    const isBasicBreak  = score >= 67 && score < 100;
-    const isWatch = score >= 34 && score < 67;
+    const st = manualStatus(s);
+    const score = st.score;
+    const isStrictBreak = st.kind === 'strict';
+    const isBasicBreak  = st.kind === 'basic';
+    const isWatch = st.kind === 'watch';
     if (isStrictBreak || isBasicBreak) breakCnt++;
     else if (isWatch) watchCnt++;
-    const badgeClass = isStrictBreak ? 'badge-green' : isBasicBreak ? 'badge-green' : isWatch ? 'badge-orange' : 'badge-blue';
-    const badgeText  = isStrictBreak ? '강력 돌파 ⚡' : isBasicBreak ? '돌파 🔥' : isWatch ? '관찰' : '대기';
+    const badgeClass = isStrictBreak || isBasicBreak ? 'badge-green' : isWatch ? 'badge-orange' : 'badge-blue';
+    const badgeText  = isStrictBreak ? '강력 돌파 ⚡' : isBasicBreak ? '매수 후보 🔥' : isWatch ? '관찰 👀'
+                     : st.kind === 'stale' ? '새로고침 필요' : '추세 미달';
+    // 관찰용 값 배지 (자동 스크리너 카드와 동일)
+    const mObs = [
+      s.rsRating != null ? `<span style="background:${s.rsRating>=90?'#a855f722':'#64748b22'};color:${s.rsRating>=90?'#a855f7':'#64748b'};border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700;">RS ${s.rsRating}</span>` : '',
+      s.closePos != null ? `<span style="background:${s.closePos>=70?'#22c55e22':'#64748b22'};color:${s.closePos>=70?'#22c55e':'#64748b'};border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700;">종가 ${s.closePos}%</span>` : '',
+      s.vcpRatio ? `<span style="background:${s.vcpRatio<=0.8?'#22c55e22':'#64748b22'};color:${s.vcpRatio<=0.8?'#22c55e':'#64748b'};border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700;">VCP ${s.vcpRatio.toFixed(2)}</span>` : '',
+    ].join('');
+    // 관문 탈락 사유 — 왜 후보가 아닌지 바로 보이게
+    const failLine = st.kind === 'fail'
+      ? `<div style="font-size:11px;color:var(--fg3);margin-top:4px;line-height:1.5;">✗ ${st.fails.join(' · ')}</div>` : '';
+    const trendRows = s.trend ? `
+        <div class="data-row" style="align-items:flex-start;">
+          <span class="data-label">추세 관문</span>
+          <span class="data-value" style="text-align:right;font-size:11px;line-height:1.7;">
+            ${Object.keys(TREND_LABELS).map(k => `<span style="color:${s.trend[k]?'var(--green)':'var(--red)'}">${s.trend[k]?'✓':'✗'} ${TREND_LABELS[k]}</span>`).join('<br>')}<br>
+            ${s.rsRating != null ? `<span style="color:${s.rsRating>=MANUAL_RS_MIN?'var(--green)':'var(--red)'}">${s.rsRating>=MANUAL_RS_MIN?'✓':'✗'} RS 레이팅 ${s.rsRating} (80+)</span>` : '<span style="color:var(--fg3)">RS 레이팅 — 다음 스캔 후 표시</span>'}
+          </span>
+        </div>
+        <div class="data-row">
+          <span class="data-label">20일 평균 거래대금</span>
+          <span class="data-value">${s.avgTurnover ? Math.round(s.avgTurnover/100000000*10)/10+'억원' : '—'}</span>
+        </div>
+        <div class="data-row">
+          <span class="data-label">종가 위치 / VCP</span>
+          <span class="data-value">${s.closePos != null ? s.closePos+'%' : '—'} / ${s.vcpRatio ? s.vcpRatio.toFixed(2) : '—'}</span>
+        </div>` : '';
     const pctFromHigh = s.high20 > 0 ? ((s.curr - s.high20) / s.high20 * 100).toFixed(1) : 0;
     const fillW = Math.min(100, score);
     const fillColor = (isStrictBreak || isBasicBreak) ? 'var(--green)' : isWatch ? 'var(--orange)' : 'var(--border)';
@@ -1641,6 +1686,7 @@ function renderScreener() {
           <span class="data-label">10일 최저가</span>
           <span class="data-value orange">${s.low10 ? fmt(s.low10)+'원' : '—'}</span>
         </div>
+        ${trendRows}
         <div style="display:flex;gap:4px;justify-content:flex-end;margin-top:8px;">
           <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px;" onclick="toggleAtrCalc(${i})">계산</button>
           <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px;" onclick="editScreener(${i})">편집</button>
@@ -1653,7 +1699,8 @@ function renderScreener() {
         <div style="flex:1;min-width:0;">
           <span class="stock-link card-title" data-stock-code="${s.ticker}" data-stock-name="${s.name||s.ticker}" style="font-size:15px;font-weight:700;">${s.name || s.ticker}</span>
           <span class="stock-link" data-stock-code="${s.ticker}" data-stock-name="${s.name||s.ticker}" style="font-size:11px;color:var(--fg3);margin-left:6px;">${s.ticker}</span>
-          <div style="margin-top:5px;"><span class="badge ${badgeClass}" style="font-size:10px;">${badgeText}</span></div>
+          <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:5px;align-items:center;"><span class="badge ${badgeClass}" style="font-size:10px;">${badgeText}</span>${mObs}</div>
+          ${failLine}
         </div>
         <div style="text-align:right;flex-shrink:0;margin-left:10px;">
           <div style="font-size:15px;font-weight:700;">${fmt(s.curr)}원</div>
@@ -2242,7 +2289,7 @@ async function fetchKisData(ticker) {
   const code = normalizeCode(ticker);
   if (!/^\d{6}$/.test(code)) throw new Error('6자리 종목코드를 입력하세요 (예: 005930)');
 
-  const res = await fetch(`${KIS_WORKER}/ohlcv?code=${code}`, {
+  const res = await fetch(`${KIS_WORKER}/ohlcv?code=${code}&withRs=1`, {
     signal: AbortSignal.timeout(15000),
   });
   if (!res.ok) throw new Error(`Worker 응답 오류: HTTP ${res.status}`);
@@ -2260,6 +2307,20 @@ async function fetchKisData(ticker) {
     avgVol: d.avgVol,
     atr: d.atr,
     high52: d.high52 || 0,
+    ...extraFromKis(d),
+  };
+}
+
+// 수동 스크리너 카드가 자동 스크리너와 같은 기준으로 판정하는 데 필요한 값들
+function extraFromKis(d) {
+  return {
+    trend: d.trend || null,
+    rsRating: d.rsRating ?? null,
+    avgTurnover: d.avgTurnover || 0,
+    closePos: d.closePos ?? null,
+    vcpRatio: d.vcpRatio || 0,
+    ma50: d.ma50 || 0, ma150: d.ma150 || 0, ma200: d.ma200 || 0,
+    low52: d.low52 || 0,
   };
 }
 
@@ -2332,6 +2393,7 @@ function screenerFormHtml(s = {}) {
   `;
 }
 
+let _kisExtra = null;   // 폼에서 방금 조회한 추세 관문 값 (저장 시 함께 들어간다)
 async function applyKisData(code, nameHint) {
   const status = document.getElementById('f-fetch-status');
   if (!status) return;
@@ -2350,6 +2412,7 @@ async function applyKisData(code, nameHint) {
     document.getElementById('f-atr').value = fmt(d.atr);
     document.getElementById('f-low10').value = fmt(d.low10);
     if (document.getElementById('f-high52')) document.getElementById('f-high52').value = fmt(d.high52);
+    _kisExtra = { symbol: d.symbol, ...extraFromKis(d) };
     status.className = 'fetch-status success';
     status.innerHTML = '✓ 데이터 자동 입력 완료 (한국투자증권 실시간)';
   } catch(e) {
@@ -2452,8 +2515,11 @@ function bindFetchBtn() {
 }
 
 function collectScreenerForm(existing = {}) {
+  const tk = document.getElementById('f-ticker').value.toUpperCase();
+  const extra = (_kisExtra && _kisExtra.symbol === tk) ? (({ symbol, ...rest }) => rest)(_kisExtra) : {};
   return {
     ...existing,
+    ...extra,
     id: existing.id || uid(),
     ticker: document.getElementById('f-ticker').value.toUpperCase(),
     name: document.getElementById('f-name').value.replace(/\s*\(\d{6}\)\s*$/, ''),
@@ -2509,6 +2575,7 @@ document.getElementById('btn-refresh-all').addEventListener('click', async () =>
         vol: d.todayVol, avgVol: d.avgVol,
         atr: d.atr, low10: d.low10,
         high52: d.high52 || screeners[i].high52 || 0,
+        ...extraFromKis(d),
       };
       ok++;
     } catch { fail++; }
@@ -3902,7 +3969,6 @@ function applyScreenerFilter() {
     vol:     { label: '거래량 2배', color: '#3b82f6' },
     near52w: { label: '52주 고점권', color: '#f59e0b' },
     rs:      { label: 'RS 강세',     color: '#a855f7' },
-    ma10m:   { label: '월봉 10선',   color: '#06b6d4' },
   };
 
   list.innerHTML = filtered.map(r => {
@@ -3914,7 +3980,7 @@ function applyScreenerFilter() {
       .filter(([k]) => f[k])
       .map(([, b]) => `<span style="background:${b.color}22;color:${b.color};border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700;">${b.label}</span>`)
       .join('');
-    const scoreCount = [f.high20,f.vol,f.near52w,f.rs,f.ma10m].filter(Boolean).length;
+    const scoreCount = [f.high20,f.vol,f.near52w,f.rs].filter(Boolean).length;
     const barColor = scoreCount >= 3 ? 'var(--green)' : scoreCount === 2 ? '#f59e0b' : 'var(--fg3)';
 
     // 관찰용 지표 — 아직 선별 조건이 아니라 값만 보여준다.
@@ -3948,10 +4014,6 @@ function applyScreenerFilter() {
         <div class="data-row">
           <span class="data-label">RS (3개월)</span>
           <span class="data-value" style="color:${(r.rs3m||0)>0?'var(--green)':'var(--red)'}">${r.rs3m != null ? (r.rs3m > 0 ? '+' : '')+r.rs3m+'%' : '—'}</span>
-        </div>
-        <div class="data-row">
-          <span class="data-label">월봉 10선 (MA10M)</span>
-          <span class="data-value">${r.ma10m ? r.ma10m.toLocaleString()+'원' : '—'} ${r.ma10m && r.curr ? `<span style="font-size:11px;color:${r.curr>r.ma10m?'var(--green)':'var(--red)'}">(${r.curr>r.ma10m?'위 ▲':'아래 ▼'})</span>` : ''}</span>
         </div>
         <div class="data-row">
           <span class="data-label">ATR (14일)</span>
