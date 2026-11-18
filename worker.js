@@ -1731,7 +1731,8 @@ async function dispatchScanWorkflow(env, cron) {
             'User-Agent': 'kis-proxy-worker',
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ ref: 'main' }),
+          // source=cloudflare → 워크플로가 중복(이미 스캔함)·휴장일 확인을 거친다. (수동 실행은 무조건 스캔)
+          body: JSON.stringify({ ref: 'main', inputs: { source: 'cloudflare' } }),
         }
       );
       rec.status = res.status;
