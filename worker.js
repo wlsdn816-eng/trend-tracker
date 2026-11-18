@@ -2757,6 +2757,20 @@ export default {
       }
 
       // 수동 Cron 트리거 (관리용)
+      // GET  /scan-dispatch → 마지막 "스캔 깨우기" 기록 (읽기 전용)
+      // POST /scan-dispatch → 지금 한 번 깨워 본다 (점검용, 10분에 한 번만 허용)
+      //   그날 스캔이 이미 끝났다면 워크플로가 곧바로 종료하므로 안전하다.
+      if (url.pathname === '/scan-dispatch') {
+        const last = await env.KV.get('last_scan_dispatch', 'json');
+        if (request.method === 'POST') {
+          if (last?.at && Date.now() - new Date(last.at).getTime() < 10 * 60 * 1000) {
+            return corsResponse({ error: '10분 안에 이미 호출됨', last }, 429);
+          }
+          return corsResponse(await dispatchScanWorkflow(env, 'manual-check'));
+        }
+        return corsResponse({ last: last || null, tokenSet: !!env.GITHUB_TOKEN });
+      }
+
       if (url.pathname === '/run-cron' && request.method === 'GET') {
         const ctx = { waitUntil: (p) => p };
         await this.scheduled({}, env, ctx);
