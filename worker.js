@@ -2692,33 +2692,10 @@ export default {
         return corsResponse({ subs });
       }
 
-      // POST /push/send-raw — 암호화 없이 평문 발송 (디버그용)
+      // 비활성화: POST /push/send-raw
+      // 인증 없이 임의의 제목·내용으로 전체 구독자에게 알림을 보낼 수 있던 디버그용 주소였다.
       if (url.pathname === '/push/send-raw' && request.method === 'POST') {
-        const body = await request.json().catch(() => ({}));
-        const payload = JSON.stringify({ title: body.title || '테스트', body: body.body || '평문 테스트' });
-        const list = await env.KV.list({ prefix: 'push_sub:' });
-        const results = [];
-        for (const key of list.keys) {
-          try {
-            const sub = await env.KV.get(key.name, 'json');
-            if (!sub) continue;
-            const jwt = await makeVapidJwt(sub.endpoint, env.VAPID_PRIVATE_KEY, 'mailto:wlsdn816@gmail.com');
-            const res = await fetch(sub.endpoint, {
-              method: 'POST',
-              headers: {
-                'Authorization': `vapid t=${jwt},k=${env.VAPID_PUBLIC_KEY}`,
-                'Content-Type': 'application/json',
-                'TTL': '86400',
-              },
-              body: payload,
-            });
-            const txt = await res.text().catch(() => '');
-            results.push({ key: key.name, status: res.status, body: txt.slice(0, 100) });
-          } catch(e) {
-            results.push({ key: key.name, error: e.message });
-          }
-        }
-        return corsResponse({ ok: true, results });
+        return corsResponse({ error: '비활성화된 기능입니다' }, 410);
       }
 
       // 비활성화: GET /push/test, POST /push/send
