@@ -991,6 +991,7 @@
         </div>
         <div id="scan-meta" style="font-size:12px;color:var(--fg2);margin-bottom:12px;"></div>
         <div id="scan-list"></div>
+        <div id="scan-excluded"></div>
       </div>
 
       <div style="border-top:1px solid var(--border);margin-bottom:16px;"></div>
@@ -1513,6 +1514,7 @@ const KV_SYNC_KEYS = {
   'tf_screener':      'screener',
   'tf_favorites':     'favorites',
   'kt_saved_positions': 'kt_positions',
+  'tf_excluded':      'excluded',      // 자동 스크리너에서 직접 제외한 종목
 };
 
 function save(key, val) {
@@ -1598,6 +1600,7 @@ function manualStatus(s) {
   const rsOk     = rsKnown ? s.rsRating >= MANUAL_RS_MIN : true;   // 분포가 없으면 막지 않고 '미확인'으로 표시
   const fails = Object.keys(TREND_LABELS).filter(k => !t[k]).map(k => TREND_LABELS[k]);
   if (rsKnown && !rsOk) fails.push(`RS 레이팅 ${s.rsRating} (80 미만)`);
+  if (s.locked) fails.push('가격 고정 (5일간 거의 안 움직임 — 공개매수·인수 등)');
   const gate = fails.length === 0;
   const n = (high20Ok ? 1 : 0) + (volOk ? 1 : 0);
   const kind = !gate ? 'fail' : n === 2 ? 'strict' : n === 1 ? 'basic' : 'watch';
@@ -2049,6 +2052,16 @@ async function syncAllUserData() {
     if (local) { try { const p = JSON.parse(local); if (p.length > 0) await saveUserData('kt_positions', p); } catch(_) {} }
   }
 
+  // 6) 스크리너 직접 제외 목록
+  const excl = await loadUserData('excluded');
+  if (excl && Array.isArray(excl) && excl.length > 0) {
+    localStorage.setItem('tf_excluded', JSON.stringify(excl));
+  } else {
+    const local = localStorage.getItem('tf_excluded');
+    if (local) { try { const p = JSON.parse(local); if (p.length > 0) await saveUserData('excluded', p); } catch(_) {} }
+  }
+  try { excludedStocks = load('tf_excluded'); renderScanExcluded(); applyScreenerFilter(); } catch(_) {}
+
   console.log('✅ 전체 데이터 KV 동기화 완료');
 }
 
@@ -2321,6 +2334,7 @@ function extraFromKis(d) {
     vcpRatio: d.vcpRatio || 0,
     ma50: d.ma50 || 0, ma150: d.ma150 || 0, ma200: d.ma200 || 0,
     low52: d.low52 || 0,
+    locked: !!d.locked, lock5Avg: d.lock5Avg ?? null, lock5Band: d.lock5Band ?? null,
   };
 }
 
@@ -3872,6 +3886,54 @@ window.toggleManualCard = (i) => {
   renderScreener();
 }
 
+// ── 스크리너 제외 ─────────────────────────────────────────────
+//  · 자동 제외: 가격 고정(공개매수·인수 등) 종목. 서버가 걸러서 결과에 목록만 남긴다.
+//  · 직접 제외: 사용자가 ✕로 뺀 종목. 계정별로 저장되고 언제든 복원할 수 있다.
+var excludedStocks = load('tf_excluded');   // [{code, name, at}]
+var _scanAutoExcluded = [];
+
+window.excludeStock = (code, name) => {
+  if (!confirm(`'${name}'을(를) 자동 스크리너에서 제외할까요?\n아래 "직접 제외" 목록에서 언제든 복원할 수 있어요.`)) return;
+  if (!excludedStocks.some(e => e.code === code)) {
+    excludedStocks.push({ code, name, at: new Date().toISOString().slice(0, 10) });
+  }
+  save('tf_excluded', excludedStocks);
+  applyScreenerFilter();
+  renderScanExcluded();
+};
+
+window.restoreStock = (code) => {
+  excludedStocks = excludedStocks.filter(e => e.code !== code);
+  save('tf_excluded', excludedStocks);
+  applyScreenerFilter();
+  renderScanExcluded();
+};
+
+function renderScanExcluded() {
+  const el = document.getElementById('scan-excluded');
+  if (!el) return;
+  const auto = _scanAutoExcluded || [];
+  const manual = excludedStocks || [];
+  if (auto.length === 0 && manual.length === 0) { el.innerHTML = ''; return; }
+  const box = 'margin-top:12px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;font-size:12px;line-height:1.7;color:var(--fg2);';
+  const autoHtml = auto.length ? `
+    <div style="${box}">
+      🔒 <b>가격 고정으로 자동 제외 ${auto.length}종목</b>
+      <div style="font-size:11px;color:var(--fg3);">최근 5일간 거의 움직이지 않은 종목입니다(공개매수·인수합병 등). 정상 종목이 섞였다면 알려 주세요.</div>
+      <div>${auto.map(a => `${a.name} <span style="color:var(--fg3)">${a.code} · 5일 변동 ${a.lock5Avg ?? '—'}% / 가격대 ${a.lock5Band ?? '—'}%</span>`).join('<br>')}</div>
+    </div>` : '';
+  const manualHtml = manual.length ? `
+    <details style="${box}">
+      <summary style="cursor:pointer;">🚫 <b>직접 제외 ${manual.length}종목</b> (눌러서 복원)</summary>
+      <div style="margin-top:6px;">${manual.map(m => `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:2px 0;">
+          <span>${m.name} <span style="color:var(--fg3)">${m.code}${m.at ? ' · ' + m.at : ''}</span></span>
+          <button class="btn btn-ghost" style="padding:2px 8px;font-size:11px;" onclick="restoreStock('${m.code}')">복원</button>
+        </div>`).join('')}</div>
+    </details>` : '';
+  el.innerHTML = autoHtml + manualHtml;
+}
+
 // 'basic' = 추세 관문 통과 + 방아쇠(신고가·거래량) 있음
 // 'watch'  = 추세 관문은 통과했는데 아직 방아쇠가 없음
 let _scanMode = 'basic';
@@ -3912,7 +3974,9 @@ async function loadScanResult() {
     const gateInfo  = data.gatePassed != null ? ` · 추세 통과 ${data.gatePassed}종목` : '';
     meta.textContent = `📅 스캔: ${d.toLocaleDateString('ko-KR')} ${d.toLocaleTimeString('ko-KR', {hour:'2-digit',minute:'2-digit'})} · 전체 ${data.total.toLocaleString()}종목${gateInfo} · 이 목록 ${data.hits}개${kospiInfo}`;
     _scanAllResults = data.results || [];
+    _scanAutoExcluded = data.excluded || [];
     applyScreenerFilter();
+    renderScanExcluded();
 
     // 하락장에는 통과 종목이 없는 게 정상 — 고장으로 오해하지 않도록 알려준다
     if (_scanAllResults.length === 0 && (data.gatePassed ?? 0) === 0) {
@@ -3933,7 +3997,9 @@ function applyScreenerFilter() {
   const useRs90    = document.getElementById('cond-rs')?.checked      ?? false;
   const anyChecked = useHigh20 || useVol || useNear52w || useRs90;
 
+  const exSet = new Set((excludedStocks || []).map(e => e.code));   // 직접 제외한 종목은 뺀다
   const filtered = _scanAllResults.filter(r => {
+    if (exSet.has(r.code)) return false;
     if (!anyChecked) return true;
     const f = r.flags || {};
     if (useHigh20  && !f.high20)  return false;
@@ -4049,6 +4115,7 @@ function applyScreenerFilter() {
           <div style="display:flex;gap:4px;justify-content:flex-end;margin-top:4px;">
             <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px;" onclick="toggleScanCard('${r.code}')">${isExpanded?'간략히 ▲':'자세히 ▼'}</button>
             <button style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;" onclick="openOrderModal('${r.code}','${r.name}',${r.curr||0},'buy')">📈 매수</button>
+            <button class="btn btn-ghost" title="이 종목을 스크리너에서 제외" style="padding:3px 8px;font-size:11px;" onclick="excludeStock('${r.code}','${r.name}')">✕ 제외</button>
           </div>
         </div>
       </div>

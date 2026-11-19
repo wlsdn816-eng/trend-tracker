@@ -68,7 +68,16 @@ jobs:
       - name: 오후 4시(KST)까지 대기
         if: (github.event_name == 'schedule' || github.event.inputs.source == 'cloudflare') && steps.weekday.outputs.weekend != 'true' && steps.check.outputs.skip != 'true'
         run: |
-          TARGET=$(date -u -d "today 07:00" +%s)   # UTC 07:00 = KST 16:00
+          # 시작 시각은 Worker가 정한다 (평소 KST 16:00 = UTC 07:00, 장 마감이 늦는 날은 그에 맞춰 뒤로).
+          # 조회에 실패하면 평소 시각으로 진행한다.
+          START_UTC=$(curl -s --max-time 15 "https://kis-proxy.wlsdn816.workers.dev/scan-start" \
+            | python3 -c "import sys,json;print(json.load(sys.stdin).get('startUtc',''))" 2>/dev/null || echo "")
+          case "$START_UTC" in
+            [0-2][0-9]:[0-5][0-9]) ;;
+            *) START_UTC="07:00" ;;
+          esac
+          echo "오늘 스캔 시작 시각(UTC) = $START_UTC"
+          TARGET=$(date -u -d "today $START_UTC" +%s)
           NOW=$(date -u +%s)
           WAIT=$((TARGET - NOW))
           if [ "$WAIT" -gt 0 ]; then

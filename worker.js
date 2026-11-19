@@ -808,8 +808,22 @@ async function getOHLCV(code, env) {
   const haltedVol = vols.slice(0, 3).every(v => v === 0);
   const haltedPrice = rows.slice(0, 3).every(r => r.high === r.low && r.high === r.close && r.close > 0);
   const isHalted = haltedVol || haltedPrice;
+
+  // 가격 고정 감지 — 공개매수·인수합병 등으로 주가가 한 가격대에 묶인 종목.
+  // 최근 5일 하루 평균 변동폭과 5일간 가격대 폭이 둘 다 극단적으로 작을 때만 true.
+  // (2026-11-18 후보 28종목 실측: 롯데렌탈·한국철강만 해당, 나머지는 평균 변동폭 0.8% 이상)
+  let lock5Avg = null, lock5Band = null, locked = false;
+  if (rows.length >= 5) {
+    const r5 = rows.slice(0, 5);
+    lock5Avg = r5.reduce((s, r) => s + (r.close > 0 ? (r.high - r.low) / r.close * 100 : 0), 0) / 5;
+    const hi5 = Math.max(...r5.map(r => r.high)), lo5 = Math.min(...r5.map(r => r.low));
+    lock5Band = lo5 > 0 ? (hi5 - lo5) / lo5 * 100 : null;
+    locked = lock5Avg < LOCK_AVG_RANGE_MAX && lock5Band !== null && lock5Band < LOCK_BAND_MAX;
+    lock5Avg = Math.round(lock5Avg * 100) / 100;
+    if (lock5Band !== null) lock5Band = Math.round(lock5Band * 100) / 100;
+  }
   return { code, curr, prevClose, high20, low10, avgVol, todayVol, atr, high52, low52,
-           avgTurnover, closePos, vcpRatio,
+           avgTurnover, closePos, vcpRatio, locked, lock5Avg, lock5Band,
            ma50, ma150, ma200, ma200Prev, rs3m, ma10m, rows, latestDate, isHalted };
 }
 
@@ -1334,6 +1348,8 @@ const RS_RATING_MIN = 80;
 // 3억이면 500만원어치 매매가 하루 거래의 1.7% 수준이라 호가를 밀지 않는다.
 // 더 큰 금액을 운용하면 이 값을 올리면 된다.
 const MIN_TURNOVER = 300_000_000;
+const LOCK_AVG_RANGE_MAX = 0.5;   // 가격 고정: 최근 5일 하루 평균 변동폭(%) 미만 …
+const LOCK_BAND_MAX      = 1.0;   // … 그리고 5일간 가격대 폭(%) 미만이면 후보에서 제외
 
 /**
  * 미너비니 추세 템플릿 — "지금 상승 추세인가"를 판정하는 관문.
@@ -1750,11 +1766,27 @@ async function dispatchScanWorkflow(env, cron) {
 // ────────────────────────────────────────────────────────────
 // 메인 핸들러
 // ────────────────────────────────────────────────────────────
+// 장 마감이 평소(15:30)보다 늦는 날 — 값은 스캔·종가 저장을 시작할 KST 시각.
+// 수능일(2026-11-19)은 정규장이 10:00~16:30이라 마감 30분 뒤인 17:00에 시작한다.
+// ※ 이 시각은 wrangler.toml의 UTC 08:00 Cron과 짝이다. 17:00 외의 시각을 쓰려면 Cron도 같이 바꿔야 한다.
+const LATE_CLOSE_DAYS = { '2026-11-19': '17:00' };
+const kstDateStr = (ms = Date.now()) => new Date(ms + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+function scanStartKst(dateKst) { return LATE_CLOSE_DAYS[dateKst] || '16:00'; }
+
 export default {
-  // Cron Trigger — 매일 오후 4시 (KST = UTC 07:00)
+  // Cron Trigger — 평소 16:00(UTC 07:00) / 장 마감이 늦는 날 17:00(UTC 08:00)
   // ※ 자동선별 스캔 + 카카오 알림은 GitHub Actions(/scan-chunk + sendFinal)에서 담당
   async scheduled(event, env, ctx) {
     ctx.waitUntil((async () => {
+      // 장 마감이 늦는 날(LATE_CLOSE_DAYS)에는 16:00/16:30 Cron은 쉬고, 17:00/17:30(UTC 08:00/08:30) Cron이 대신 일한다.
+      // 반대로 평소에는 17:00 계열 Cron이 쉰다. /run-cron 수동 호출(event.cron 없음)은 그대로 통과.
+      const cronNow   = event?.cron || '';
+      const lateCron  = cronNow === '0 8 * * 1-5' || cronNow === '30 8 * * 1-5';
+      const isRetry   = cronNow === '30 7 * * 1-5' || cronNow === '30 8 * * 1-5';
+      if (cronNow && lateCron !== !!LATE_CLOSE_DAYS[kstDateStr()]) {
+        console.log(`[Cron ${cronNow}] 오늘 일정과 맞지 않아 쉼 (late=${!!LATE_CLOSE_DAYS[kstDateStr()]})`);
+        return;
+      }
       // 0) 평일이면 GitHub 스캔 워크플로를 직접 깨운다.
       //    GitHub의 예약 실행은 지연되거나 통째로 건너뛰는 날이 있어서(11/12, 11/17, 11/18 실측),
       //    시각이 정확한 Cloudflare Cron이 GitHub에 "지금 시작해"라고 요청한다.
@@ -1766,8 +1798,8 @@ export default {
           await dispatchScanWorkflow(env, event.cron);
         }
       }
-      // 이 아래(보유종목 종가·푸시)는 하루 한 번(07:00 Cron)만
-      if (event?.cron === '30 7 * * 1-5') return;
+      // 이 아래(보유종목 종가·푸시)는 하루 한 번(첫 Cron)만
+      if (isRetry) return;
 
       // 1) 보유 포지션 종가 스냅샷 KV에 저장
       try {
@@ -1957,6 +1989,15 @@ export default {
             allResults = [...byCode.values()];
           }
 
+          // 가격 고정(공개매수·인수 등) 종목은 후보에서 빼고 '자동 제외 목록'으로 따로 남긴다.
+          // 걸러낸 종목을 버리지 않고 앱에 보여줘야 오탐(정상 종목이 걸림)을 눈으로 확인할 수 있다.
+          const lockedList = allResults.filter(r => r.locked);
+          allResults = allResults.filter(r => !r.locked);
+          const excluded = lockedList.map(r => ({
+            code: r.code, name: r.name, curr: r.curr,
+            lock5Avg: r.lock5Avg, lock5Band: r.lock5Band, reason: '가격 고정',
+          }));
+
           // RS 레이팅을 시장 전체(관문 탈락 종목 포함) 기준으로 매기고,
           // 기준 미달은 여기서 탈락시킨다 = 추세 관문의 마지막 항목.
           const marketRs3m = Array.isArray(body.marketRs3m) ? body.marketRs3m : [];
@@ -1978,6 +2019,7 @@ export default {
             kospiRs3m: Math.round(kospiRs3m * 10) / 10,
             rsRatingMin: RS_RATING_MIN,
             gatePassed: gatePassed.length,   // 추세 관문 통과 종목 수 (0이어도 정상 — 하락장)
+            excluded,                        // 가격 고정으로 자동 제외된 종목
           };
           const basicData  = { ...meta, hits: basicResults.length,  results: basicResults.slice(0,200) };
           const strictData = { ...meta, hits: strictResults.length, results: strictResults.slice(0,200) };
@@ -2070,6 +2112,8 @@ export default {
             avgTurnover: data.avgTurnover, closePos: data.closePos, vcpRatio: data.vcpRatio,
             rs3m,
             ma50: Math.round(data.ma50), ma150: Math.round(data.ma150), ma200: Math.round(data.ma200),
+            // 가격 고정(공개매수 등) 종목은 sendFinal에서 후보가 아니라 '제외 목록'으로 분리한다
+            ...(data.locked ? { locked: true, lock5Avg: data.lock5Avg, lock5Band: data.lock5Band } : {}),
           };
         };
 
@@ -2758,6 +2802,15 @@ export default {
       }
 
       // 수동 Cron 트리거 (관리용)
+      // GET /scan-start → 오늘 스캔을 시작할 시각 (워크플로가 대기 시각을 정할 때 읽는다)
+      if (url.pathname === '/scan-start' && request.method === 'GET') {
+        const date = kstDateStr();
+        const startKst = scanStartKst(date);
+        const [hh, mm] = startKst.split(':').map(Number);
+        const startUtc = `${String((hh + 24 - 9) % 24).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+        return corsResponse({ date, startKst, startUtc, late: !!LATE_CLOSE_DAYS[date] });
+      }
+
       // GET  /scan-dispatch → 마지막 "스캔 깨우기" 기록 (읽기 전용)
       // POST /scan-dispatch → 지금 한 번 깨워 본다 (점검용, 10분에 한 번만 허용)
       //   그날 스캔이 이미 끝났다면 워크플로가 곧바로 종료하므로 안전하다.
