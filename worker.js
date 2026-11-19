@@ -2721,35 +2721,11 @@ export default {
         return corsResponse({ ok: true, results });
       }
 
-      // POST /push/send { title, body, url } — 테스트 발송 (내부용)
-      // GET /push/test — 브라우저에서 바로 테스트용
-      if (url.pathname === '/push/test' && request.method === 'GET') {
-        const payload = {
-          title: '🔔 FCM v1 테스트',
-          body:  '알림이 정상 작동해요!',
-          url:   'https://wlsdn816-eng.github.io/trend-tracker/',
-        };
-        try {
-          const results = await broadcastPush(payload, env);
-          return corsResponse({ ok: true, results });
-        } catch(e) {
-          return corsResponse({ error: e.message, stack: e.stack }, 500);
-        }
-      }
-
-      if (url.pathname === '/push/send' && request.method === 'POST') {
-        const body = await request.json().catch(() => ({}));
-        const payload = {
-          title: body.title || '📈 추세추종 매매 트래커',
-          body:  body.body  || '알림 테스트',
-          url:   body.url   || 'https://wlsdn816-eng.github.io/trend-tracker/',
-        };
-        try {
-          const results = await broadcastPush(payload, env);
-          return corsResponse({ ok: true, results });
-        } catch(e) {
-          return corsResponse({ error: e.message }, 500);
-        }
+      // 비활성화: GET /push/test, POST /push/send
+      // 인증 없이 누구나 열면 전체 구독자에게 알림이 가는 테스트용 주소였다. 앱·워크플로 어디서도 쓰지 않는다.
+      if ((url.pathname === '/push/test' && request.method === 'GET') ||
+          (url.pathname === '/push/send' && request.method === 'POST')) {
+        return corsResponse({ error: '비활성화된 기능입니다' }, 410);
       }
 
       // ────────────────────────────────────────────────────────
