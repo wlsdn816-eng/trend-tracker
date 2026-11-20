@@ -289,6 +289,9 @@ async function sendWebPush(subscription, payload, env) {
       'Content-Type':     'application/octet-stream',
       'Content-Encoding': 'aes128gcm',
       'TTL':              '86400',
+      // 높은 우선순위: 안드로이드가 절전(Doze) 중에도 알림을 모아 두지 않고 바로 전달하게 한다.
+      // (이 헤더가 없으면 'normal'이라 화면이 꺼진 폰에는 몇 시간 뒤에 도착하는 일이 있었다)
+      'Urgency':          'high',
     },
     body: encrypted,
   });
