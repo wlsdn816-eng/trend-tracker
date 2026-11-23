@@ -1842,11 +1842,15 @@ export default {
         console.error('리서치 피드 갱신 실패:', e);
       }
 
-      // 4) 웹 푸시 알림 발송 (VAPID 설정된 경우)
-      if (env.VAPID_PRIVATE_KEY && env.VAPID_PUBLIC_KEY) {
+      // 4) 웹 푸시 알림 발송 (VAPID 설정된 경우) — 주말(토·일)에는 보내지 않는다.
+      //    이 Cron(0 7 * * *)은 매일 돌아서 주말에도 "보유종목 종가 업데이트" 알림이 갔다.
+      const kstDowPush = new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCDay();
+      const isWeekendPush = kstDowPush === 0 || kstDowPush === 6;
+      if (isWeekendPush) console.log('[푸시] 주말이라 알림 발송 생략');
+      if (!isWeekendPush && env.VAPID_PRIVATE_KEY && env.VAPID_PUBLIC_KEY) {
         try {
           const kstNow  = new Date(Date.now() + 9 * 60 * 60 * 1000);
-          const dateStr = `${kstNow.getMonth() + 1}/${kstNow.getDate()}`;
+          const dateStr = `${kstNow.getUTCMonth() + 1}/${kstNow.getUTCDate()}`;
           const payload = {
             title: '📊 보유종목 종가 업데이트',
             body:  `${dateStr} 보유종목 종가가 저장됐어요. (자동 스크리너 결과는 별도 알림으로 와요)`,
