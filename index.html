@@ -4058,9 +4058,33 @@ function applyScreenerFilter() {
         ? `<span title="최근 5일 변동폭 ÷ 직전 20일. 1보다 작을수록 조여진 상태" style="background:${r.vcpRatio<=0.8?'#22c55e22':'#64748b22'};color:${r.vcpRatio<=0.8?'#22c55e':'#64748b'};border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700;">VCP ${r.vcpRatio.toFixed(2)}</span>` : '',
     ].join('');
 
+    // 편입 기록 — 매수 후보 탭은 '후보로 든 날', 관찰 탭은 '추세 관문을 통과한 날' 기준
+    const fmtMD = s => s ? `${parseInt(s.slice(5, 7))}/${parseInt(s.slice(8, 10))}` : '';
+    const useBuy     = _scanMode !== 'watch' && !!r.buySince;
+    const sinceDate  = useBuy ? r.buySince : r.gateSince;
+    const sincePrice = useBuy ? r.buyPrice : r.gatePrice;
+    const sinceDays  = useBuy ? r.buyDays  : r.gateDays;
+    const sincePct   = (sincePrice > 0 && r.curr > 0 && sinceDays > 1) ? (r.curr - sincePrice) / sincePrice * 100 : null;
+    const pctColor   = v => v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--fg3)';
+    const entryBadge = !sinceDate ? ''
+      : (sinceDays === 1 && !r.seed)
+        ? `<span title="오늘 처음 목록에 들어왔어요" style="background:#22c55e22;color:#22c55e;border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700;">🆕 오늘 편입</span>`
+        : `<span title="${r.seed ? '이 기능을 켜기 전부터 목록에 있어서, 실제 최초 편입일은 이보다 이를 수 있어요' : '연속으로 목록에 든 첫날 (한 번이라도 빠지면 다시 셉니다)'}" style="background:#64748b22;color:var(--fg2);border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700;">📅 ${fmtMD(sinceDate)}${r.seed ? '~' : ''} 편입 · ${sinceDays}일째</span>`;
+
     const isExpanded = _scanExpandedSet.has(r.code);
     const detailRows = isExpanded ? `
       <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
+        ${sinceDate ? `
+        <div class="data-row">
+          <span class="data-label">${useBuy ? '매수 후보 편입' : '추세 관문 통과'}</span>
+          <span class="data-value">${fmtMD(sinceDate)}${r.seed ? '~' : ''} · ${sinceDays}일째${sincePrice ? ` · 편입가 ${sincePrice.toLocaleString()}원` : ''}${sincePct !== null ? ` <span style="font-size:11px;color:${pctColor(sincePct)}">(${sincePct > 0 ? '+' : ''}${sincePct.toFixed(1)}%)</span>` : ''}</span>
+        </div>
+        ${useBuy && r.gateSince && r.gateSince !== r.buySince ? `
+        <div class="data-row">
+          <span class="data-label">추세 관문 통과</span>
+          <span class="data-value">${fmtMD(r.gateSince)}${r.seed ? '~' : ''} · ${r.gateDays}일째</span>
+        </div>` : ''}
+        ${r.seed ? `<div style="font-size:11px;color:var(--fg3);padding:2px 0 6px;">※ 기록을 시작하기 전부터 목록에 있던 종목이라 실제 최초 편입일은 더 이를 수 있어요.</div>` : ''}` : ''}
         <div class="data-row">
           <span class="data-label">현재가</span>
           <span class="data-value">${r.curr ? r.curr.toLocaleString()+'원' : '—'}</span>
@@ -4105,10 +4129,11 @@ function applyScreenerFilter() {
         <div style="flex:1;min-width:0;">
           <span class="card-title" style="font-size:14px;">${r.name}</span>
           <span style="font-size:11px;color:var(--fg3);margin-left:6px;">${r.code}</span>
-          <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:5px;">${scoreBadges || ''}${obsBadges}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:5px;">${entryBadge}${scoreBadges || ''}${obsBadges}</div>
         </div>
         <div style="text-align:right;flex-shrink:0;margin-left:10px;">
           <div style="font-size:15px;font-weight:700;">${r.curr ? r.curr.toLocaleString()+'원' : '—'}</div>
+          ${sincePct !== null ? `<div title="편입한 날 종가 ${sincePrice.toLocaleString()}원 대비" style="font-size:11px;font-weight:700;color:${pctColor(sincePct)}">편입가 대비 ${sincePct > 0 ? '+' : ''}${sincePct.toFixed(1)}%</div>` : ''}
           <div style="font-size:11px;color:${pctFromHigh!==null&&parseFloat(pctFromHigh)>=0?'var(--green)':'var(--red)'}">
             20일고가 ${pctFromHigh!==null?(parseFloat(pctFromHigh)>=0?'+':'')+pctFromHigh+'%':'—'}
           </div>

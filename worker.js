@@ -1730,6 +1730,53 @@ async function getResearchFeed(env) {
 }
 
 // ────────────────────────────────────────────────────────────
+// 종목별 편입 기록 — "이 종목이 목록에 처음 들어온 날"
+//
+//  · gate* : 추세 관문을 통과해 (매수 후보 또는 관찰) 목록에 든 기준
+//  · buy*  : 매수 후보(기본) 목록에 든 기준
+//  · Since = 연속 편입이 시작된 날, Price = 그날 종가, Days = 연속 며칠째
+//  · 연속 기준: 스캔 결과에서 하루라도 빠졌다가 다시 들어오면 그날부터 새로 센다.
+//  · seed=true : 이 기능을 켜기 전부터 있던 종목이라 실제 최초 편입일은 더 이를 수 있다.
+//  · 같은 날 스캔을 다시 돌려도(수동 재실행) 하루가 두 번 세어지지 않도록 직전 날 스냅샷을 함께 보관한다.
+// ────────────────────────────────────────────────────────────
+async function updateScanHistory(env, scannedAt, gateList, buyList) {
+  const D = kstDateStr(new Date(scannedAt).getTime());
+  let hist = null;
+  try { hist = await env.KV.get('scan_history', 'json'); } catch (_) {}
+
+  let baseStocks = {}, baseDate = null;
+  if (hist) {
+    if (hist.date === D) { baseStocks = hist.prevStocks || {}; baseDate = hist.prevDate || null; }  // 같은 날 재실행
+    else                 { baseStocks = hist.stocks || {};     baseDate = hist.date || null; }
+  }
+  // 직전 기록이 너무 오래됐으면(스캔이 오래 쉬었으면) 연속으로 보지 않는다
+  if (baseDate && (Date.parse(D) - Date.parse(baseDate)) > 7 * 86400000) { baseStocks = {}; baseDate = null; }
+
+  const buySet = new Set(buyList.map(r => r.code));
+  const stocks = {};
+  for (const r of gateList) {
+    const b = baseStocks[r.code];
+    const e = {
+      gateSince: b ? b.gateSince : D,
+      gatePrice: b ? b.gatePrice : r.curr,
+      gateDays:  b ? (b.gateDays || 1) + 1 : 1,
+      seed:      b ? !!b.seed : false,
+    };
+    if (buySet.has(r.code)) {
+      const had = b && b.buySince;
+      e.buySince = had ? b.buySince : D;
+      e.buyPrice = had ? b.buyPrice : r.curr;
+      e.buyDays  = had ? (b.buyDays || 1) + 1 : 1;
+    }
+    stocks[r.code] = e;
+    Object.assign(r, e);
+  }
+  await env.KV.put('scan_history',
+    JSON.stringify({ date: D, stocks, prevDate: baseDate, prevStocks: baseStocks }),
+    { expirationTtl: 45 * 86400 });
+}
+
+// ────────────────────────────────────────────────────────────
 // GitHub Actions 스캔 워크플로 직접 호출 (Cloudflare Cron → GitHub)
 // 필요: Worker Secret GITHUB_TOKEN (이 저장소 Actions: Read and write)
 // ────────────────────────────────────────────────────────────
@@ -2020,6 +2067,15 @@ export default {
           const strictResults = gatePassed.filter(r => r.flags?.high20 && r.flags?.vol);
           const basicResults  = gatePassed.filter(r => r.flags?.high20 || r.flags?.vol);
           const watchResults  = gatePassed.filter(r => !r.flags?.high20 && !r.flags?.vol);
+
+          // 종목별 "목록에 처음 들어온 날·그때 가격·연속 일수"를 기록하고 결과에 붙인다.
+          // (같은 객체를 strict/basic/watch가 공유하므로 여기서 붙이면 세 목록에 모두 반영된다)
+          // 실패해도 스캔·알림은 계속 진행한다.
+          try {
+            await updateScanHistory(env, scannedAt, gatePassed, basicResults);
+          } catch (e) {
+            console.error('편입 기록 갱신 실패 (무시):', e.message);
+          }
 
           const meta = {
             scannedAt, total,
@@ -2762,6 +2818,34 @@ export default {
       }
 
       // 수동 Cron 트리거 (관리용)
+      // POST /scan-history-init — 편입 기록이 아직 없을 때 "지금 저장된 스캔 결과"로 한 번만 초기값을 만든다.
+      //   이 기능을 켜기 전부터 목록에 있던 종목이 전부 '오늘 신규'로 보이는 것을 막기 위한 시드(seed=true).
+      //   기록이 이미 있으면 아무것도 하지 않는다(멱등).
+      if (url.pathname === '/scan-history-init' && request.method === 'POST') {
+        const existing = await env.KV.get('scan_history', 'json');
+        if (existing) return corsResponse({ skipped: true, date: existing.date, count: Object.keys(existing.stocks || {}).length });
+        const [basic, strict, watch] = await Promise.all(
+          ['scan_result_basic', 'scan_result_strict', 'scan_result_watch'].map(k => env.KV.get(k, 'json')));
+        if (!basic || !watch) return corsResponse({ error: '저장된 스캔 결과가 없어 초기화할 수 없습니다' }, 404);
+        const D = kstDateStr(new Date(basic.scannedAt).getTime());
+        const stocks = {};
+        for (const r of [...(watch.results || []), ...(basic.results || [])]) {
+          const e = { gateSince: D, gatePrice: r.curr, gateDays: 1, seed: true };
+          stocks[r.code] = { ...(stocks[r.code] || {}), ...e };
+        }
+        for (const r of (basic.results || [])) {
+          Object.assign(stocks[r.code], { buySince: D, buyPrice: r.curr, buyDays: 1 });
+        }
+        await env.KV.put('scan_history', JSON.stringify({ date: D, stocks, prevDate: null, prevStocks: {} }), { expirationTtl: 45 * 86400 });
+        // 지금 저장된 결과에도 같은 값을 붙여, 앱에서 바로 보이게 한다
+        for (const [key, data] of [['scan_result_basic', basic], ['scan_result_strict', strict], ['scan_result_watch', watch]]) {
+          if (!data) continue;
+          for (const r of (data.results || [])) Object.assign(r, stocks[r.code] || {});
+          await env.KV.put(key, JSON.stringify(data), { expirationTtl: 86400 });
+        }
+        return corsResponse({ ok: true, date: D, count: Object.keys(stocks).length });
+      }
+
       // GET /scan-start → 오늘 스캔을 시작할 시각 (워크플로가 대기 시각을 정할 때 읽는다)
       if (url.pathname === '/scan-start' && request.method === 'GET') {
         const date = kstDateStr();
