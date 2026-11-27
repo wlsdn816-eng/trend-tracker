@@ -848,7 +848,7 @@
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
       가상추적
     </button>
-    <button class="tab-btn" data-tab="mock">
+    <button class="tab-btn" data-tab="mock" hidden style="display:none;" title="모의투자 탭은 숨김 처리됨 (data-tab=mock 의 hidden/style 제거하면 복구)">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
       모의투자
     </button>
@@ -1821,7 +1821,7 @@ function renderScreener() {
           <div style="font-size:11px;color:${parseFloat(pctFromHigh)>=0?'var(--green)':'var(--red)'}">20일고가 ${parseFloat(pctFromHigh)>=0?'+':''}${pctFromHigh}%</div>
           <div style="display:flex;gap:4px;justify-content:flex-end;margin-top:4px;">
             <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px;" onclick="toggleManualCard(${i})">${isManualExpanded?'간략히 ▲':'자세히 ▼'}</button>
-            <button style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;" onclick="openOrderModal('${s.ticker}','${s.name||s.ticker}',${s.curr||0},'buy')">📈 매수</button>
+            <button class="btn btn-ghost" title="관제탑 계산기로 보내기 (현재가·ATR·10일 최저가 자동 입력)" style="padding:3px 8px;font-size:11px;" onclick="sendToTower('${s.ticker}','${s.name||s.ticker}',${s.curr||0})">🗼 관제탑</button>
           </div>
         </div>
       </div>
@@ -3000,6 +3000,19 @@ async function ktSelectStock(code, name) {
   } catch(e) { console.warn('ATR 자동 로딩 실패:', e); }
   document.getElementById('kt-atr-loading').style.display  = 'none';
   document.getElementById('kt-low10-loading').style.display = 'none';
+}
+
+// 스크리너 카드 → 관제탑 계산기: 종목·현재가를 채우고 ATR·10일 최저가는 자동 로딩
+async function sendToTower(code, name, curr) {
+  document.querySelector('.tab-btn[data-tab="position"]').click();
+  const entry = document.getElementById('kt-entry');
+  if (curr > 0) entry.value = fmtComma(Math.round(curr));
+  document.getElementById('kt-atr').value = '';
+  document.getElementById('kt-low10').value = '';
+  const card = document.getElementById('kt-stock-search');
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  showToast(`${name} → 관제탑 (기준가 ${curr > 0 ? Math.round(curr).toLocaleString() + '원' : '직접 입력'})`);
+  await ktSelectStock(code, name);
 }
 
 function ktClearStock() {
@@ -4261,7 +4274,7 @@ function applyScreenerFilter() {
           </div>
           <div style="display:flex;gap:4px;justify-content:flex-end;margin-top:4px;">
             <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px;" onclick="toggleScanCard('${r.code}')">${isExpanded?'간략히 ▲':'자세히 ▼'}</button>
-            <button style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;" onclick="openOrderModal('${r.code}','${r.name}',${r.curr||0},'buy')">📈 매수</button>
+            <button class="btn btn-ghost" title="관제탑 계산기로 보내기 (현재가·ATR·10일 최저가 자동 입력)" style="padding:3px 8px;font-size:11px;" onclick="sendToTower('${r.code}','${r.name}',${r.curr||0})">🗼 관제탑</button>
             <button class="btn btn-ghost" title="가상 추적에 담기 (사지 않고 시세만 추적)" style="padding:3px 8px;font-size:11px;" onclick="wtAddFromScan('${r.code}')">👁 추적</button>
             <button class="btn btn-ghost" title="이 종목을 스크리너에서 제외" style="padding:3px 8px;font-size:11px;" onclick="excludeStock('${r.code}','${r.name}')">✕ 제외</button>
           </div>
