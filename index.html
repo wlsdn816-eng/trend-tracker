@@ -840,6 +840,10 @@
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
       모의투자
     </button>
+    <button class="tab-btn" data-tab="watchtrack">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      가상추적
+    </button>
   </nav>
 
   <!-- Main Content -->
@@ -1272,6 +1276,25 @@
       <div id="journal-list"></div>
     </div>
 
+    <!-- ══ 가상 추적 탭 패널 ═══════════════════════════════════════ -->
+    <div class="tab-panel" id="panel-watchtrack">
+      <div class="section-head">
+        <h2>가상 추적</h2>
+        <span id="wt-status" style="font-size:11px;color:var(--fg3);"></span>
+      </div>
+      <div style="font-size:12px;color:var(--fg3);margin:-4px 0 10px;line-height:1.5;">사지 않았지만 담아 둔 종목이 그날 종가로 샀다면 어땠을지 매일 추적해요. 기준가는 담은 날 종가(수정 가능)입니다.</div>
+      <div class="summary-row" id="wt-summary"></div>
+      <div id="wt-summary-sub" style="font-size:11px;color:var(--fg3);margin:-4px 0 10px;"></div>
+      <div id="wt-alert" hidden style="margin-bottom:10px;"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center;">
+        <button class="btn btn-primary" style="font-size:12px;padding:7px 12px;width:auto;" onclick="wtOpenForm()">＋ 종목 담기</button>
+        <button id="wt-f-open" class="btn btn-primary" style="font-size:12px;padding:7px 12px;width:auto;" onclick="wtSetFilter('open')">진행 중</button>
+        <button id="wt-f-closed" class="btn btn-ghost" style="font-size:12px;padding:7px 12px;width:auto;" onclick="wtSetFilter('closed')">정리됨</button>
+        <button class="btn btn-ghost" style="font-size:12px;padding:7px 12px;margin-left:auto;width:auto;" onclick="wtRefreshAll(true)">🔄 새로고침</button>
+      </div>
+      <div id="wt-list"></div>
+    </div>
+
     <!-- ══ 모의투자 탭 패널 ════════════════════════════════════════ -->
     <div class="tab-panel" id="panel-mock">
 
@@ -1499,6 +1522,84 @@
   </div>
 </div>
 
+<!-- ══ 가상 추적 모달 ═════════════════════════════════════════ -->
+<div id="wt-modal" hidden style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:210;display:flex;align-items:flex-end;justify-content:center;">
+  <div style="background:var(--surface1);width:100%;max-width:520px;max-height:92vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:18px 16px 24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div id="wt-form-title" style="font-size:16px;font-weight:800;">종목 담기</div>
+      <button onclick="wtCloseModal()" style="background:none;border:none;font-size:20px;color:var(--fg3);cursor:pointer;">✕</button>
+    </div>
+    <input type="hidden" id="wt-code"><input type="hidden" id="wt-name"><input type="hidden" id="wt-source" value="manual">
+    <div class="form-group">
+      <label class="form-label">종목</label>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:var(--accent-soft);border-radius:8px;font-size:13px;margin-bottom:6px;">
+        <span id="wt-picked" style="font-weight:600;color:var(--accent);">종목을 검색해서 선택하세요</span>
+        <button type="button" onclick="wtRepick()" style="background:none;border:none;color:var(--fg3);cursor:pointer;font-size:12px;">변경</button>
+      </div>
+      <div id="wt-search-wrap" class="search-wrap" style="margin-bottom:0;">
+        <input type="text" class="form-input" id="wt-search" placeholder="종목명 검색 (예: 삼성전자)" autocomplete="off">
+        <div id="wt-search-drop" class="search-dropdown" style="display:none;"></div>
+      </div>
+    </div>
+    <div class="form-row" style="gap:10px;">
+      <div class="form-group" style="flex:1;">
+        <label class="form-label">기준일 (담은 날)</label>
+        <input type="date" class="form-input" id="wt-date" onchange="wtAutoPrice(true)">
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label class="form-label">기준가 (원) · 기본은 종가</label>
+        <input type="number" class="form-input" id="wt-price" inputmode="numeric" placeholder="자동 입력">
+      </div>
+    </div>
+    <div class="form-row" style="gap:10px;">
+      <div class="form-group" style="flex:1;">
+        <label class="form-label">🎯 목표가 (선택)</label>
+        <input type="number" class="form-input" id="wt-target" inputmode="numeric">
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label class="form-label">🛑 손절가 (선택)</label>
+        <input type="number" class="form-input" id="wt-stop" inputmode="numeric">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">매수하려던 이유</label>
+      <textarea class="form-input" id="wt-reason" rows="3" placeholder="왜 이 종목에 관심을 가졌나요?" style="resize:vertical;"></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">매도 예상 시점·이유</label>
+      <textarea class="form-input" id="wt-exitplan" rows="3" placeholder="언제, 어떤 조건이면 팔 생각이었나요?" style="resize:vertical;"></textarea>
+    </div>
+    <div id="wt-form-msg" style="font-size:12px;color:var(--fg3);min-height:16px;margin-bottom:8px;"></div>
+    <button class="btn btn-primary" onclick="wtSubmitForm()" style="width:100%;">저장</button>
+  </div>
+</div>
+
+<div id="wt-close-modal" hidden style="position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:220;display:flex;align-items:flex-end;justify-content:center;">
+  <div style="background:var(--surface1);width:100%;max-width:520px;max-height:92vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:18px 16px 24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <div style="font-size:16px;font-weight:800;">가상 정리</div>
+      <button onclick="document.getElementById('wt-close-modal').hidden=true" style="background:none;border:none;font-size:20px;color:var(--fg3);cursor:pointer;">✕</button>
+    </div>
+    <div id="wt-close-name" style="font-size:13px;color:var(--fg2);margin-bottom:12px;"></div>
+    <div class="form-row" style="gap:10px;">
+      <div class="form-group" style="flex:1;">
+        <label class="form-label">정리일</label>
+        <input type="date" class="form-input" id="wt-exit-date">
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label class="form-label">정리가 (원)</label>
+        <input type="number" class="form-input" id="wt-exit-price" inputmode="numeric" oninput="wtCloseCalc()">
+      </div>
+    </div>
+    <div id="wt-close-calc" style="font-size:14px;font-weight:700;min-height:20px;margin-bottom:8px;"></div>
+    <div class="form-group">
+      <label class="form-label">복기 메모</label>
+      <textarea class="form-input" id="wt-review" rows="4" placeholder="예상이 맞았나요? 무엇을 배웠나요?" style="resize:vertical;"></textarea>
+    </div>
+    <button class="btn btn-primary" onclick="wtSubmitClose()" style="width:100%;">정리하기</button>
+  </div>
+</div>
+
 <script>
 // ─── Storage ─────────────────────────────────────────────────
 const KEYS = { screener: 'tf_screener', positions: 'tf_positions', journal: 'tf_journal', acct: 'tf_account' };
@@ -1515,6 +1616,7 @@ const KV_SYNC_KEYS = {
   'tf_favorites':     'favorites',
   'kt_saved_positions': 'kt_positions',
   'tf_excluded':      'excluded',      // 자동 스크리너에서 직접 제외한 종목
+  'tf_watchtrack':    'watchtrack',    // 가상 추적 종목
 };
 
 function save(key, val) {
@@ -1538,6 +1640,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active');
     document.getElementById('panel-' + tab).classList.add('active');
     if (tab === 'home') loadHomeData(); // 5분 캐시 적용
+    if (tab === 'watchtrack') { wtRender(); wtRefreshAll(false); }
     if (tab === 'position') {
       ktUpdateUnitSummary();
       ktUpdateRegimeBanner(ktMarketBull);
@@ -2061,6 +2164,16 @@ async function syncAllUserData() {
     if (local) { try { const p = JSON.parse(local); if (p.length > 0) await saveUserData('excluded', p); } catch(_) {} }
   }
   try { excludedStocks = load('tf_excluded'); renderScanExcluded(); applyScreenerFilter(); } catch(_) {}
+
+  // 7) 가상 추적
+  const wt = await loadUserData('watchtrack');
+  if (wt && Array.isArray(wt) && wt.length > 0) {
+    localStorage.setItem('tf_watchtrack', JSON.stringify(wt));
+  } else {
+    const local = localStorage.getItem('tf_watchtrack');
+    if (local) { try { const p = JSON.parse(local); if (p.length > 0) await saveUserData('watchtrack', p); } catch(_) {} }
+  }
+  try { wtItems = load('tf_watchtrack'); wtRender(); } catch(_) {}
 
   console.log('✅ 전체 데이터 KV 동기화 완료');
 }
@@ -4140,6 +4253,7 @@ function applyScreenerFilter() {
           <div style="display:flex;gap:4px;justify-content:flex-end;margin-top:4px;">
             <button class="btn btn-ghost" style="padding:3px 8px;font-size:11px;" onclick="toggleScanCard('${r.code}')">${isExpanded?'간략히 ▲':'자세히 ▼'}</button>
             <button style="background:#2563eb;color:#fff;border:none;border-radius:7px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;" onclick="openOrderModal('${r.code}','${r.name}',${r.curr||0},'buy')">📈 매수</button>
+            <button class="btn btn-ghost" title="가상 추적에 담기 (사지 않고 시세만 추적)" style="padding:3px 8px;font-size:11px;" onclick="wtAddFromScan('${r.code}')">👁 추적</button>
             <button class="btn btn-ghost" title="이 종목을 스크리너에서 제외" style="padding:3px 8px;font-size:11px;" onclick="excludeStock('${r.code}','${r.name}')">✕ 제외</button>
           </div>
         </div>
@@ -5165,4 +5279,369 @@ document.addEventListener('click', e => {
     openStockDetail(code, name);
   }
 });
+
+// ═══════════════════════════════════════════════════════════════
+// 가상 추적 — 실제로 사지 않았지만 담아 둔 종목의 이후 시세를 추적한다.
+//   · 기준가는 '담은 날 종가'(수정 가능) — 종가매매 원칙에 맞춘 기본값
+//   · 시세는 앱을 열 때 일봉(최근 100거래일)에서 다시 계산한다 → 앱을 안 연 날도 빠지지 않는다
+//   · 목표가·손절가는 종가가 닿았는지만 알려 준다(자동 청산 없음)
+// ═══════════════════════════════════════════════════════════════
+let wtItems = load('tf_watchtrack');
+let wtFilter = 'open';          // open | closed
+let wtEditingId = null;         // 수정 중인 항목 id (null이면 새로 담기)
+let wtClosingId = null;
+let wtLastRefresh = 0;
+let wtOpenNotes = new Set();    // 메모를 펼친 카드
+
+const wtEsc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const wtKstToday = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+const wtCompact = d => (d || '').replace(/-/g, '');
+const wtDash = d => d && d.length === 8 ? `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}` : (d || '');
+const wtMD = d => d ? `${parseInt(d.slice(5,7))}/${parseInt(d.slice(8,10))}` : '';
+const wtPct = (a, b) => (a > 0 && b > 0) ? (b - a) / a * 100 : null;
+const wtFmtPct = v => v === null || v === undefined ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(1)}%`;
+const wtColor = v => v > 0 ? 'var(--green)' : v < 0 ? 'var(--red)' : 'var(--fg3)';
+const wtNum = v => { const n = parseInt(String(v ?? '').replace(/[^0-9]/g, ''), 10); return n > 0 ? n : 0; };
+
+function wtSave() { save('tf_watchtrack', wtItems); }
+
+// 현재 수익률(진행 중은 현재가, 정리됨은 정리가 기준)
+function wtReturn(it) {
+  return it.status === 'closed' ? wtPct(it.entryPrice, it.exitPrice) : wtPct(it.entryPrice, it.last);
+}
+
+// ── 시세 갱신 ───────────────────────────────────────────────
+async function wtFetchRows(code) {
+  const res = await fetch(`${KIS_WORKER}/ohlcv?code=${code}`);
+  const d = await res.json();
+  if (!res.ok || !Array.isArray(d.rows)) throw new Error(d.error || '시세 조회 실패');
+  return d.rows;   // 최신순
+}
+
+function wtApplyRows(it, rows) {
+  const since = wtCompact(it.addedDate);
+  const asc = rows.filter(r => r.date >= since && r.close > 0).reverse();   // 오래된 순
+  if (!rows.length) return;
+  it.last = rows[0].close;
+  it.lastDate = wtDash(rows[0].date);
+  if (asc.length) {
+    const closes = asc.map(r => r.close);
+    it.maxClose = Math.max(it.maxClose || 0, ...closes);
+    it.minClose = it.minClose ? Math.min(it.minClose, ...closes) : Math.min(...closes);
+    it.days = asc.filter(r => r.date > since).length;           // 담은 다음 거래일부터 센다
+    const after = asc.filter(r => r.date > since);
+    if (it.target > 0 && !it.targetHit) { const h = after.find(r => r.close >= it.target); if (h) it.targetHit = wtDash(h.date); }
+    if (it.stop > 0 && !it.stopHit)     { const h = after.find(r => r.close <= it.stop);   if (h) it.stopHit   = wtDash(h.date); }
+  }
+  it.updatedAt = Date.now();
+}
+
+async function wtRefreshAll(force) {
+  if (!force && Date.now() - wtLastRefresh < 5 * 60 * 1000) return;
+  const open = wtItems.filter(i => i.status !== 'closed');
+  if (!open.length) { wtLastRefresh = Date.now(); return; }
+  wtLastRefresh = Date.now();
+  const st = document.getElementById('wt-status');
+  if (st) st.textContent = '시세 갱신 중…';
+  const codes = [...new Set(open.map(i => i.code))];
+  let fail = 0, newAlerts = [];
+  for (const code of codes) {
+    try {
+      const rows = await wtFetchRows(code);
+      for (const it of open.filter(i => i.code === code)) {
+        const hadT = it.targetHit, hadS = it.stopHit;
+        wtApplyRows(it, rows);
+        if (!hadT && it.targetHit) newAlerts.push(`🎯 ${it.name} 목표가 도달`);
+        if (!hadS && it.stopHit)   newAlerts.push(`🛑 ${it.name} 손절가 이탈`);
+      }
+    } catch (e) { fail++; }
+  }
+  wtSave();
+  wtRender();
+  if (st) st.textContent = fail ? `일부 종목(${fail}개) 시세를 가져오지 못했어요` : `갱신 ${new Date().toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'})}`;
+  if (newAlerts.length) showToast(newAlerts.slice(0, 3).join(' · '));
+}
+
+// ── 화면 ───────────────────────────────────────────────────
+function wtSetFilter(f) { wtFilter = f; wtRender(); }
+function wtToggleNote(id) { wtOpenNotes.has(id) ? wtOpenNotes.delete(id) : wtOpenNotes.add(id); wtRender(); }
+
+function wtRender() {
+  const box = document.getElementById('wt-list');
+  if (!box) return;
+  const open = wtItems.filter(i => i.status !== 'closed');
+  const closed = wtItems.filter(i => i.status === 'closed');
+
+  // 요약
+  const rets = wtItems.map(wtReturn).filter(v => v !== null);
+  const avg = rets.length ? rets.reduce((a, b) => a + b, 0) / rets.length : null;
+  const wins = rets.filter(v => v > 0).length;
+  const closedRets = closed.map(wtReturn).filter(v => v !== null);
+  const closedWin = closedRets.filter(v => v > 0).length;
+  const tile = (val, label, color) => `<div class="summary-tile"><div class="summary-tile-val" style="${color ? 'color:' + color : ''}">${val}</div><div class="summary-tile-label">${label}</div></div>`;
+  const best = wtItems.filter(i => wtReturn(i) !== null).sort((a, b) => wtReturn(b) - wtReturn(a))[0];
+  document.getElementById('wt-summary').innerHTML =
+    tile(`${open.length} / ${closed.length}`, '진행 / 정리') +
+    tile(wtFmtPct(avg), '전체 평균', avg === null ? '' : wtColor(avg)) +
+    tile(rets.length ? `${Math.round(wins / rets.length * 100)}%` : '—', `승률 (${wins}/${rets.length})`);
+  document.getElementById('wt-summary-sub').textContent = closedRets.length
+    ? `정리분만 보면 승률 ${Math.round(closedWin / closedRets.length * 100)}% (${closedWin}/${closedRets.length}) · 평균 ${wtFmtPct(closedRets.reduce((a, b) => a + b, 0) / closedRets.length)}`
+    : '';
+
+  // 알림 배너
+  const hits = open.filter(i => i.targetHit || i.stopHit);
+  const banner = document.getElementById('wt-alert');
+  banner.hidden = hits.length === 0;
+  banner.innerHTML = hits.map(i =>
+    `<div style="padding:8px 12px;border-radius:10px;margin-bottom:6px;font-size:13px;background:${i.stopHit ? '#ef444422' : '#22c55e22'};color:var(--fg);">
+       ${i.targetHit ? `🎯 <b>${wtEsc(i.name)}</b> 종가가 목표가 ${i.target.toLocaleString()}원에 도달 (${wtMD(i.targetHit)})` : ''}
+       ${i.targetHit && i.stopHit ? '<br>' : ''}
+       ${i.stopHit ? `🛑 <b>${wtEsc(i.name)}</b> 종가가 손절가 ${i.stop.toLocaleString()}원 이탈 (${wtMD(i.stopHit)})` : ''}
+       <span style="color:var(--fg3);font-size:11px;"> · 정리 여부는 직접 결정하세요</span>
+     </div>`).join('');
+
+  // 탭 버튼
+  document.getElementById('wt-f-open').className = 'btn ' + (wtFilter === 'open' ? 'btn-primary' : 'btn-ghost');
+  document.getElementById('wt-f-closed').className = 'btn ' + (wtFilter === 'closed' ? 'btn-primary' : 'btn-ghost');
+  document.getElementById('wt-f-open').textContent = `진행 중 ${open.length}`;
+  document.getElementById('wt-f-closed').textContent = `정리됨 ${closed.length}`;
+
+  const list = (wtFilter === 'open' ? open : closed).slice()
+    .sort((a, b) => (b.addedDate || '').localeCompare(a.addedDate || ''));
+  if (!list.length) {
+    box.innerHTML = `<div class="card" style="text-align:center;color:var(--fg3);padding:24px;font-size:13px;">${wtFilter === 'open'
+      ? '추적 중인 종목이 없어요.<br>스크리너 카드의 “👁 추적” 버튼이나 위의 “＋ 종목 담기”로 시작해 보세요.'
+      : '아직 정리한 종목이 없어요.'}</div>`;
+    return;
+  }
+  box.innerHTML = list.map(wtCard).join('');
+}
+
+function wtCard(it) {
+  const isClosed = it.status === 'closed';
+  const ret = wtReturn(it);
+  const price = isClosed ? it.exitPrice : it.last;
+  const maxPct = wtPct(it.entryPrice, it.maxClose), minPct = wtPct(it.entryPrice, it.minClose);
+  const badges = [
+    isClosed ? `<span style="background:#64748b22;color:var(--fg2);border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700;">정리됨 ${wtMD(it.exitDate)}</span>` : '',
+    !isClosed && it.targetHit ? `<span style="background:#22c55e22;color:#22c55e;border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700;">🎯 목표 도달 ${wtMD(it.targetHit)}</span>` : '',
+    !isClosed && it.stopHit ? `<span style="background:#ef444422;color:#ef4444;border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700;">🛑 손절 이탈 ${wtMD(it.stopHit)}</span>` : '',
+    it.source === 'scan' ? `<span style="background:#2563eb22;color:#2563eb;border-radius:5px;padding:2px 7px;font-size:10px;font-weight:700;">스크리너</span>` : '',
+  ].join('');
+  const holdDays = isClosed && it.exitDate && it.addedDate
+    ? Math.max(0, Math.round((new Date(it.exitDate) - new Date(it.addedDate)) / 86400000)) : null;
+  const sub = [
+    `${wtMD(it.addedDate)} 기준가 ${it.entryPrice.toLocaleString()}원`,
+    isClosed ? (holdDays !== null ? `${holdDays}일 보유 가정` : '') : `${it.days || 0}거래일째`,
+    !isClosed && maxPct !== null ? `최고 ${wtFmtPct(maxPct)}` : '',
+    !isClosed && minPct !== null ? `최저 ${wtFmtPct(minPct)}` : '',
+  ].filter(Boolean).join(' · ');
+  const lv = [
+    it.target ? `🎯 목표 ${it.target.toLocaleString()}원 (${wtFmtPct(wtPct(it.entryPrice, it.target))})` : '',
+    it.stop ? `🛑 손절 ${it.stop.toLocaleString()}원 (${wtFmtPct(wtPct(it.entryPrice, it.stop))})` : '',
+  ].filter(Boolean).join('  ');
+  const hasNotes = it.reason || it.exitPlan || it.review;
+  const noteOpen = wtOpenNotes.has(it.id);
+  const noteBlock = (label, txt) => txt ? `<div style="margin-top:8px;"><div style="font-size:11px;color:var(--fg3);font-weight:700;">${label}</div><div style="font-size:13px;white-space:pre-wrap;line-height:1.5;">${wtEsc(txt)}</div></div>` : '';
+
+  return `<div class="card" style="margin-bottom:10px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+      <div style="min-width:0;">
+        <div style="font-size:15px;font-weight:700;"><span data-stock-code="${it.code}" data-stock-name="${wtEsc(it.name)}" style="cursor:pointer;">${wtEsc(it.name)}</span> <span style="font-size:11px;color:var(--fg3);font-weight:400;">${it.code}</span></div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;">${badges}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;">
+        <div style="font-size:20px;font-weight:800;color:${wtColor(ret)};">${wtFmtPct(ret)}</div>
+        <div style="font-size:12px;color:var(--fg3);">${price ? price.toLocaleString() + '원' : '—'}${!isClosed && it.lastDate ? ` · ${wtMD(it.lastDate)}` : ''}</div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--fg2);margin-top:8px;">${sub}</div>
+    ${lv ? `<div style="font-size:12px;color:var(--fg3);margin-top:3px;">${lv}</div>` : ''}
+    ${hasNotes ? `<div style="margin-top:6px;"><button class="btn btn-ghost" style="padding:3px 8px;font-size:11px;" onclick="wtToggleNote('${it.id}')">${noteOpen ? '메모 접기 ▲' : '📝 메모 보기 ▼'}</button></div>
+      ${noteOpen ? noteBlock('매수하려던 이유', it.reason) + noteBlock('매도 예상 시점·이유', it.exitPlan) + noteBlock('복기 메모', it.review) : ''}` : ''}
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;">
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px;" onclick="wtOpenForm('${it.id}')">✏️ 수정</button>
+      ${isClosed
+        ? `<button class="btn btn-ghost" style="padding:4px 10px;font-size:12px;" onclick="wtReopen('${it.id}')">↩︎ 다시 진행</button>`
+        : `<button class="btn btn-ghost" style="padding:4px 10px;font-size:12px;" onclick="wtOpenClose('${it.id}')">✅ 가상 정리</button>`}
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px;color:var(--red);" onclick="wtDelete('${it.id}')">🗑 삭제</button>
+    </div>
+  </div>`;
+}
+
+// ── 담기 / 수정 폼 ──────────────────────────────────────────
+function wtOpenForm(id, preset) {
+  wtEditingId = id || null;
+  const it = id ? wtItems.find(i => i.id === id) : null;
+  const p = it || preset || {};
+  document.getElementById('wt-form-title').textContent = it ? '추적 종목 수정' : '종목 담기';
+  document.getElementById('wt-code').value = p.code || '';
+  document.getElementById('wt-name').value = p.name || '';
+  document.getElementById('wt-source').value = p.source || 'manual';
+  document.getElementById('wt-picked').textContent = p.code ? `${p.name}  ${p.code}` : '종목을 검색해서 선택하세요';
+  document.getElementById('wt-search-wrap').hidden = !!it || !!p.code;
+  document.getElementById('wt-search').value = '';
+  document.getElementById('wt-date').value = p.addedDate || wtKstToday();
+  document.getElementById('wt-price').value = p.entryPrice || '';
+  document.getElementById('wt-target').value = p.target || '';
+  document.getElementById('wt-stop').value = p.stop || '';
+  document.getElementById('wt-reason').value = p.reason || '';
+  document.getElementById('wt-exitplan').value = p.exitPlan || '';
+  document.getElementById('wt-form-msg').textContent = '';
+  document.getElementById('wt-modal').hidden = false;
+}
+function wtCloseModal() { document.getElementById('wt-modal').hidden = true; document.getElementById('wt-close-modal').hidden = true; }
+
+function wtPick(code, name) {
+  document.getElementById('wt-code').value = code;
+  document.getElementById('wt-name').value = name;
+  document.getElementById('wt-picked').textContent = `${name}  ${code}`;
+  document.getElementById('wt-search-wrap').hidden = true;
+  document.getElementById('wt-search-drop').style.display = 'none';
+  wtAutoPrice();
+}
+function wtRepick() {
+  document.getElementById('wt-code').value = '';
+  document.getElementById('wt-name').value = '';
+  document.getElementById('wt-picked').textContent = '종목을 검색해서 선택하세요';
+  document.getElementById('wt-search-wrap').hidden = false;
+}
+
+// 기준일이 바뀌면 그날 종가를 자동으로 채운다(직접 고친 값은 그대로 둔다 — 비어 있을 때만)
+async function wtAutoPrice(force) {
+  const code = document.getElementById('wt-code').value;
+  const date = wtCompact(document.getElementById('wt-date').value);
+  const priceEl = document.getElementById('wt-price');
+  if (!code || (priceEl.value && !force)) return;
+  const msg = document.getElementById('wt-form-msg');
+  msg.textContent = '종가 조회 중…';
+  try {
+    const rows = await wtFetchRows(code);
+    const row = rows.find(r => r.date === date) || (date >= rows[0].date ? rows[0] : null);
+    if (row) { priceEl.value = row.close; msg.textContent = `${wtDash(row.date)} 종가 ${row.close.toLocaleString()}원으로 채웠어요 (장중이면 현재가). 필요하면 고쳐 주세요.`; }
+    else msg.textContent = '그 날짜의 종가를 찾지 못했어요. 직접 입력해 주세요.';
+  } catch (e) { msg.textContent = '종가를 가져오지 못했어요. 직접 입력해 주세요.'; }
+}
+
+async function wtSubmitForm() {
+  const msg = document.getElementById('wt-form-msg');
+  const code = document.getElementById('wt-code').value;
+  const name = document.getElementById('wt-name').value;
+  const entry = wtNum(document.getElementById('wt-price').value);
+  const date = document.getElementById('wt-date').value;
+  const target = wtNum(document.getElementById('wt-target').value);
+  const stop = wtNum(document.getElementById('wt-stop').value);
+  if (!code) { msg.textContent = '종목을 선택해 주세요.'; return; }
+  if (!date) { msg.textContent = '기준일을 입력해 주세요.'; return; }
+  if (!entry) { msg.textContent = '기준가를 입력해 주세요.'; return; }
+  if (target && target <= entry) { msg.textContent = '목표가는 기준가보다 높아야 해요.'; return; }
+  if (stop && stop >= entry) { msg.textContent = '손절가는 기준가보다 낮아야 해요.'; return; }
+  const fields = {
+    code, name, addedDate: date, entryPrice: entry, target, stop,
+    reason: document.getElementById('wt-reason').value.trim(),
+    exitPlan: document.getElementById('wt-exitplan').value.trim(),
+  };
+  let it;
+  if (wtEditingId) {
+    it = wtItems.find(i => i.id === wtEditingId);
+    const changed = it.addedDate !== date || it.entryPrice !== entry || it.target !== target || it.stop !== stop;
+    Object.assign(it, fields);
+    if (changed) { delete it.targetHit; delete it.stopHit; delete it.maxClose; delete it.minClose; }   // 기준이 바뀌면 다시 계산
+  } else {
+    it = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), status: 'open',
+           source: document.getElementById('wt-source').value || 'manual', createdAt: Date.now(), ...fields };
+    wtItems.push(it);
+  }
+  wtSave();
+  wtCloseModal();
+  wtRender();
+  // 이 종목만 바로 갱신
+  try { wtApplyRows(it, await wtFetchRows(it.code)); wtSave(); wtRender(); } catch (e) {}
+}
+
+// ── 가상 정리 / 되돌리기 / 삭제 ─────────────────────────────
+function wtOpenClose(id) {
+  const it = wtItems.find(i => i.id === id);
+  if (!it) return;
+  wtClosingId = id;
+  document.getElementById('wt-close-name').textContent = `${it.name}  (기준가 ${it.entryPrice.toLocaleString()}원)`;
+  document.getElementById('wt-exit-date').value = it.lastDate || wtKstToday();
+  document.getElementById('wt-exit-price').value = it.last || '';
+  document.getElementById('wt-review').value = it.review || '';
+  wtCloseCalc();
+  document.getElementById('wt-close-modal').hidden = false;
+}
+function wtCloseCalc() {
+  const it = wtItems.find(i => i.id === wtClosingId);
+  const p = wtNum(document.getElementById('wt-exit-price').value);
+  const r = it ? wtPct(it.entryPrice, p) : null;
+  const el = document.getElementById('wt-close-calc');
+  el.textContent = r === null ? '' : `가상 수익률 ${wtFmtPct(r)}`;
+  el.style.color = r === null ? '' : wtColor(r);
+}
+function wtSubmitClose() {
+  const it = wtItems.find(i => i.id === wtClosingId);
+  const price = wtNum(document.getElementById('wt-exit-price').value);
+  const date = document.getElementById('wt-exit-date').value;
+  if (!it || !price || !date) { document.getElementById('wt-close-calc').textContent = '정리일과 정리가를 입력해 주세요.'; return; }
+  it.status = 'closed'; it.exitDate = date; it.exitPrice = price;
+  it.review = document.getElementById('wt-review').value.trim();
+  wtSave(); wtCloseModal(); wtFilter = 'closed'; wtRender();
+}
+function wtReopen(id) {
+  const it = wtItems.find(i => i.id === id);
+  if (!it) return;
+  it.status = 'open'; delete it.exitDate; delete it.exitPrice;
+  wtSave(); wtFilter = 'open'; wtRender(); wtRefreshAll(true);
+}
+function wtDelete(id) {
+  const it = wtItems.find(i => i.id === id);
+  if (!it) return;
+  if (!confirm(`“${it.name}” 추적 기록을 삭제할까요? (되돌릴 수 없어요)`)) return;
+  wtItems = wtItems.filter(i => i.id !== id);
+  wtSave(); wtRender();
+}
+
+// ── 스크리너 카드 → 담기 ────────────────────────────────────
+function wtAddFromScan(code) {
+  const r = (_scanAllResults || []).find(x => x.code === code);
+  if (!r) return;
+  const dup = wtItems.find(i => i.code === code && i.status !== 'closed');
+  if (dup && !confirm(`${r.name}은(는) 이미 추적 중이에요 (${wtMD(dup.addedDate)} 기준). 또 담을까요?`)) return;
+  const reasons = (r.reasons || []).join(', ');
+  const since = _scanMode !== 'watch' && r.buySince ? r.buySince : r.gateSince;
+  const note = [
+    `스크리너 ${_scanMode === 'watch' ? '관찰 목록' : '매수 후보'}에서 담음`,
+    reasons ? `포착 이유: ${reasons}` : '',
+    since ? `목록 편입: ${wtMD(since)}${r.seed ? '~' : ''}` : '',
+  ].filter(Boolean).join('\n');
+  document.querySelector('.tab-btn[data-tab="watchtrack"]').click();
+  wtOpenForm(null, { code: r.code, name: r.name, source: 'scan', entryPrice: r.curr || '', addedDate: wtKstToday(), reason: note });
+}
+
+// ── 종목 검색 ───────────────────────────────────────────────
+(function () {
+  let timer;
+  const inp = document.getElementById('wt-search'), drop = document.getElementById('wt-search-drop');
+  if (!inp) return;
+  inp.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = inp.value.trim();
+    if (!q) { drop.style.display = 'none'; return; }
+    timer = setTimeout(async () => {
+      drop.style.display = 'block';
+      drop.innerHTML = '<div class="search-msg">🔍 검색 중…</div>';
+      try {
+        const res = await searchKisStocks(q);
+        if (!res.length) { drop.innerHTML = '<div class="search-msg">검색 결과 없음</div>'; return; }
+        drop.innerHTML = res.slice(0, 8).map(r =>
+          `<div class="search-item" data-code="${r.code}" data-name="${wtEsc(r.name)}"><span class="search-item-name">${wtEsc(r.name)}</span><span class="search-item-meta">${r.code}</span></div>`).join('');
+        drop.querySelectorAll('.search-item').forEach(el => el.addEventListener('click', () => wtPick(el.dataset.code, el.dataset.name)));
+      } catch (e) { drop.innerHTML = `<div class="search-msg" style="color:var(--red);">❌ ${wtEsc(e.message)}</div>`; }
+    }, 250);
+  });
+})();
+
+wtRender();
+
 </script>
