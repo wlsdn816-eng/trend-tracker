@@ -1767,6 +1767,9 @@ async function updateScanHistory(env, scannedAt, gateList, buyList) {
       e.buySince = had ? b.buySince : D;
       e.buyPrice = had ? b.buyPrice : r.curr;
       e.buyDays  = had ? (b.buyDays || 1) + 1 : 1;
+      // '집계 시작 전부터 있던 종목' 표시는 매수 후보 연속 기록 기준으로 따로 따진다.
+      // (관찰 목록에는 전부터 있었어도 매수 후보로는 오늘 처음 들어온 종목이 있다)
+      e.buySeed  = had ? (b.buySeed !== undefined ? !!b.buySeed : (!!b.seed && b.buySince === b.gateSince)) : false;
     }
     stocks[r.code] = e;
     Object.assign(r, e);
