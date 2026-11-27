@@ -2824,6 +2824,15 @@ export default {
       // POST /scan-history-init — 편입 기록이 아직 없을 때 "지금 저장된 스캔 결과"로 한 번만 초기값을 만든다.
       //   이 기능을 켜기 전부터 목록에 있던 종목이 전부 '오늘 신규'로 보이는 것을 막기 위한 시드(seed=true).
       //   기록이 이미 있으면 아무것도 하지 않는다(멱등).
+      // GET /scan-history?code=092870 — 편입 기록 조회(읽기 전용, 점검용). code 생략 시 요약만.
+      if (url.pathname === '/scan-history' && request.method === 'GET') {
+        const h = await env.KV.get('scan_history', 'json');
+        if (!h) return corsResponse({ error: '기록 없음' }, 404);
+        const code = url.searchParams.get('code');
+        const base = { date: h.date, prevDate: h.prevDate, count: Object.keys(h.stocks || {}).length, prevCount: Object.keys(h.prevStocks || {}).length };
+        if (!code) return corsResponse(base);
+        return corsResponse({ ...base, today: (h.stocks || {})[code] || null, prev: (h.prevStocks || {})[code] || null });
+      }
       if (url.pathname === '/scan-history-init' && request.method === 'POST') {
         const existing = await env.KV.get('scan_history', 'json');
         if (existing) return corsResponse({ skipped: true, date: existing.date, count: Object.keys(existing.stocks || {}).length });
